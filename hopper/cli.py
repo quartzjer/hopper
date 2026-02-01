@@ -11,6 +11,24 @@ SOCKET_PATH = DATA_DIR / "server.sock"
 def cmd_up() -> int:
     """Start the server."""
     from hopper.server import start_server
+    from hopper.tmux import get_tmux_sessions, is_inside_tmux
+
+    if not is_inside_tmux():
+        print("hopper up must run inside tmux.")
+        print()
+        sessions = get_tmux_sessions()
+        if sessions:
+            print("You have active tmux sessions. Attach to one and run hopper:")
+            print()
+            for session in sessions:
+                print(f"    tmux attach -t {session}")
+            print()
+            print("Or start a new session:")
+        else:
+            print("Start a new tmux session:")
+        print()
+        print("    tmux new 'hopper up'")
+        return 1
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     start_server(SOCKET_PATH)
