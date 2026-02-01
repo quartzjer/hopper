@@ -1,0 +1,64 @@
+"""Tests for the hopper client."""
+
+import threading
+import time
+from pathlib import Path
+
+import pytest
+
+from hopper.client import ping, send_message
+from hopper.server import Server
+
+
+@pytest.fixture
+def socket_path(tmp_path):
+    """Provide a temporary socket path."""
+    return tmp_path / "test.sock"
+
+
+@pytest.fixture
+def server(socket_path):
+    """Start a server in a background thread."""
+    srv = Server(socket_path)
+    thread = threading.Thread(target=srv.start, daemon=True)
+    thread.start()
+
+    for _ in range(50):
+        if socket_path.exists():
+            break
+        time.sleep(0.1)
+    else:
+        raise TimeoutError("Server did not start")
+
+    yield srv
+
+    srv.stop()
+    thread.join(timeout=2)
+
+
+def test_ping_success(server, socket_path):
+    """Ping returns True when server responds."""
+    result = ping(socket_path)
+    assert result is True
+
+
+def test_ping_failure_no_server(socket_path):
+    """Ping returns False when server not running."""
+    result = ping(socket_path, timeout=0.5)
+    assert result is False
+
+
+def test_send_message_no_response(server, socket_path):
+    """Send message without waiting for response."""
+    result = send_message(socket_path, {"type": "test"}, wait_for_response=False)
+    assert result is None
+
+
+def test_send_message_connection_failure():
+    """Send message fails gracefully when no server."""
+    result = send_message(
+        Path("/tmp/nonexistent.sock"),
+        {"type": "test"},
+        timeout=0.5,
+    )
+    assert result is None
