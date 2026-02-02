@@ -65,12 +65,13 @@ def test_save_and_load_sessions(temp_config):
 def test_create_session(temp_config):
     """Test session creation."""
     sessions_list = []
-    session = create_session(sessions_list)
+    session = create_session(sessions_list, "test-project")
 
     # Verify UUID format
     uuid.UUID(session.id)  # Raises if invalid
 
     assert session.stage == "ore"
+    assert session.project == "test-project"
     assert session.created_at > 0
     assert len(sessions_list) == 1
     assert sessions_list[0] is session
@@ -82,6 +83,7 @@ def test_create_session(temp_config):
     loaded = load_sessions()
     assert len(loaded) == 1
     assert loaded[0].id == session.id
+    assert loaded[0].project == "test-project"
 
 
 def test_update_session_stage(temp_config):

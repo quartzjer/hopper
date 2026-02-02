@@ -128,7 +128,8 @@ class Server:
             self._send_response(conn, {"type": "session_list", "sessions": sessions_data})
 
         elif msg_type == "session_create":
-            session = create_session(self.sessions)
+            project = message.get("project", "")
+            session = create_session(self.sessions, project)
             self.broadcast({"type": "session_created", "session": session.to_dict()})
 
         elif msg_type == "session_update":

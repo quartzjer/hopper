@@ -87,6 +87,7 @@ class Session:
     id: str
     stage: Stage
     created_at: int  # milliseconds since epoch
+    project: str = ""  # Project name this session belongs to
     updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
     state: State = "idle"
     message: str = ""  # Human-readable status message
@@ -111,6 +112,7 @@ class Session:
             "id": self.id,
             "stage": self.stage,
             "created_at": self.created_at,
+            "project": self.project,
             "updated_at": self.effective_updated_at,
             "state": self.state,
             "message": self.message,
@@ -123,6 +125,7 @@ class Session:
             id=data["id"],
             stage=data["stage"],
             created_at=data["created_at"],
+            project=data.get("project", ""),  # Backwards compat
             updated_at=data["updated_at"],
             state=data["state"],
             message=data.get("message", ""),  # Backwards compat
@@ -163,13 +166,22 @@ def save_sessions(sessions: list[Session]) -> None:
     os.replace(tmp_path, SESSIONS_FILE)
 
 
-def create_session(sessions: list[Session]) -> Session:
-    """Create a new session, add to list, and create its directory."""
+def create_session(sessions: list[Session], project: str) -> Session:
+    """Create a new session, add to list, and create its directory.
+
+    Args:
+        sessions: List of sessions to add to.
+        project: Project name for this session.
+
+    Returns:
+        The newly created session.
+    """
     now = current_time_ms()
     session = Session(
         id=str(uuid.uuid4()),
         stage="ore",
         created_at=now,
+        project=project,
         updated_at=now,
         state="new",
         message="Ready to start",

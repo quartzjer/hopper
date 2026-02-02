@@ -9,7 +9,8 @@ import threading
 from pathlib import Path
 
 from hopper import prompt
-from hopper.client import get_session_state, ping, set_session_state
+from hopper.client import get_session, get_session_state, ping, set_session_state
+from hopper.projects import find_project
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class OreRunner:
         self.server_connected = False
         self.background_thread: threading.Thread | None = None
         self.is_new_session = False  # Set during run() based on server state
+        self.project_name: str = ""  # Project name for prompt context
+        self.project_dir: str = ""  # Project directory for prompt context
 
     def run(self) -> int:
         """Run Claude for this session. Returns exit code."""
@@ -57,10 +60,24 @@ class OreRunner:
         original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
 
         try:
-            # Query server for session state to determine if this is a new session
-            state = get_session_state(self.socket_path, self.session_id)
-            self.is_new_session = state == "new"
-            self.server_connected = state is not None
+            # Query server for session to get state and project info
+            session_data = get_session(self.socket_path, self.session_id)
+            if session_data:
+                state = session_data.get("state")
+                self.is_new_session = state == "new"
+                self.server_connected = True
+
+                # Get project info for prompt context
+                project_name = session_data.get("project", "")
+                if project_name:
+                    self.project_name = project_name
+                    project = find_project(project_name)
+                    if project:
+                        self.project_dir = project.path
+            else:
+                state = get_session_state(self.socket_path, self.session_id)
+                self.is_new_session = state == "new"
+                self.server_connected = state is not None
 
             # Start background thread for server connection management
             self.background_thread = threading.Thread(
@@ -148,7 +165,13 @@ class OreRunner:
 
         # Build command - use --resume for existing sessions, prompt for new
         if self.is_new_session:
-            initial_prompt = prompt.load("shovel")
+            # Pass project info as template context
+            context = {}
+            if self.project_name:
+                context["project"] = self.project_name
+            if self.project_dir:
+                context["dir"] = self.project_dir
+            initial_prompt = prompt.load("shovel", context=context if context else None)
             cmd = ["claude", "--session-id", self.session_id, initial_prompt]
         else:
             cmd = ["claude", "--resume", self.session_id]

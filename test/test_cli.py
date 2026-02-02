@@ -217,9 +217,10 @@ def test_up_command_requires_tmux(capsys):
     with patch.object(sys, "argv", ["hopper", "up"]):
         with patch("hopper.cli.require_no_server", return_value=None):
             with patch("hopper.cli.require_config_name", return_value=None):
-                with patch("hopper.tmux.is_inside_tmux", return_value=False):
-                    with patch("hopper.tmux.get_tmux_sessions", return_value=[]):
-                        result = main()
+                with patch("hopper.cli.require_projects", return_value=None):
+                    with patch("hopper.tmux.is_inside_tmux", return_value=False):
+                        with patch("hopper.tmux.get_tmux_sessions", return_value=[]):
+                            result = main()
     assert result == 1
     captured = capsys.readouterr()
     assert "hop up must run inside tmux" in captured.out
@@ -231,9 +232,10 @@ def test_up_command_shows_existing_sessions(capsys):
     with patch.object(sys, "argv", ["hopper", "up"]):
         with patch("hopper.cli.require_no_server", return_value=None):
             with patch("hopper.cli.require_config_name", return_value=None):
-                with patch("hopper.tmux.is_inside_tmux", return_value=False):
-                    with patch("hopper.tmux.get_tmux_sessions", return_value=["main", "dev"]):
-                        result = main()
+                with patch("hopper.cli.require_projects", return_value=None):
+                    with patch("hopper.tmux.is_inside_tmux", return_value=False):
+                        with patch("hopper.tmux.get_tmux_sessions", return_value=["main", "dev"]):
+                            result = main()
     assert result == 1
     captured = capsys.readouterr()
     assert "tmux attach -t main" in captured.out
@@ -566,3 +568,105 @@ def test_config_set_updates_existing(tmp_path, monkeypatch, capsys):
 
     saved = json.loads(config_file.read_text())
     assert saved == {"name": "new", "other": "keep"}
+
+
+# Tests for require_projects
+
+
+def test_require_projects_success(tmp_path, monkeypatch):
+    """require_projects returns None when projects exist."""
+    from hopper.cli import require_projects
+    from hopper.projects import Project
+
+    monkeypatch.setattr(
+        "hopper.projects.get_active_projects",
+        lambda: [Project(path="/path", name="proj")],
+    )
+    result = require_projects()
+    assert result is None
+
+
+def test_require_projects_failure(tmp_path, monkeypatch, capsys):
+    """require_projects returns 1 when no projects."""
+    from hopper.cli import require_projects
+
+    monkeypatch.setattr("hopper.projects.get_active_projects", lambda: [])
+    result = require_projects()
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "No projects configured" in captured.out
+    assert "hop project add" in captured.out
+
+
+# Tests for project command
+
+
+def test_project_help(capsys):
+    """project --help shows help and returns 0."""
+    from hopper.cli import cmd_project
+
+    result = cmd_project(["--help"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "usage: hop project" in captured.out
+
+
+def test_project_list_empty(tmp_path, monkeypatch, capsys):
+    """project list shows message when no projects."""
+    from hopper.cli import cmd_project
+
+    monkeypatch.setattr("hopper.projects.load_projects", lambda: [])
+    result = cmd_project(["list"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "No projects configured" in captured.out
+
+
+def test_project_list_shows_projects(tmp_path, monkeypatch, capsys):
+    """project list shows all projects."""
+    from hopper.cli import cmd_project
+    from hopper.projects import Project
+
+    projects = [
+        Project(path="/path/to/foo", name="foo"),
+        Project(path="/path/to/bar", name="bar", disabled=True),
+    ]
+    monkeypatch.setattr("hopper.projects.load_projects", lambda: projects)
+    result = cmd_project(["list"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "foo" in captured.out
+    assert "/path/to/foo" in captured.out
+    assert "bar" in captured.out
+    assert "(disabled)" in captured.out
+
+
+def test_project_add_missing_path(capsys):
+    """project add without path shows error."""
+    from hopper.cli import cmd_project
+
+    result = cmd_project(["add"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "path required" in captured.out
+
+
+def test_project_remove_missing_name(capsys):
+    """project remove without name shows error."""
+    from hopper.cli import cmd_project
+
+    result = cmd_project(["remove"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "name required" in captured.out
+
+
+def test_project_remove_not_found(tmp_path, monkeypatch, capsys):
+    """project remove with unknown name shows error."""
+    from hopper.cli import cmd_project
+
+    monkeypatch.setattr("hopper.projects.remove_project", lambda name: False)
+    result = cmd_project(["remove", "unknown"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "not found" in captured.out

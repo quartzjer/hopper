@@ -102,6 +102,22 @@ def require_config_name() -> int | None:
     return None
 
 
+def require_projects() -> int | None:
+    """Check that at least one project is configured.
+
+    Returns exit code on failure, None on success.
+    """
+    from hopper.projects import get_active_projects
+
+    projects = get_active_projects()
+    if not projects:
+        print("No projects configured. Add a project first:")
+        print()
+        print("    hop project add <path>")
+        return 1
+    return None
+
+
 def validate_hopper_sid() -> int | None:
     """Validate HOPPER_SID if set. Returns exit code on failure, None on success."""
     from hopper.client import session_exists
@@ -142,6 +158,9 @@ def cmd_up(args: list[str]) -> int:
         return err
 
     if err := require_config_name():
+        return err
+
+    if err := require_projects():
         return err
 
     if not is_inside_tmux():
@@ -257,6 +276,72 @@ def cmd_status(args: list[str]) -> int:
         print(f"Updated from '{old_message}' to '{new_message}'")
     else:
         print(f"Updated to '{new_message}'")
+
+    return 0
+
+
+@command("project", "Manage projects")
+def cmd_project(args: list[str]) -> int:
+    """Manage projects (git directories for sessions)."""
+    from hopper.projects import add_project, load_projects, remove_project
+
+    parser = make_parser(
+        "project",
+        "Manage projects. Projects are git directories where sessions run.",
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=["add", "remove", "list"],
+        default="list",
+        help="Action to perform (default: list)",
+    )
+    parser.add_argument("path", nargs="?", help="Path (for add) or name (for remove)")
+    try:
+        parsed = parse_args(parser, args)
+    except SystemExit:
+        return 0
+    except ArgumentError as e:
+        print(f"error: {e}")
+        parser.print_usage()
+        return 1
+
+    if parsed.action == "list":
+        projects = load_projects()
+        if not projects:
+            print("No projects configured. Use: hop project add <path>")
+            return 0
+        for p in projects:
+            status = " (disabled)" if p.disabled else ""
+            print(f"{p.name}{status}")
+            print(f"  {p.path}")
+        return 0
+
+    if parsed.action == "add":
+        if not parsed.path:
+            print("error: path required for add")
+            parser.print_usage()
+            return 1
+        try:
+            project = add_project(parsed.path)
+            print(f"Added project: {project.name}")
+            print(f"  {project.path}")
+            return 0
+        except ValueError as e:
+            print(f"error: {e}")
+            return 1
+
+    if parsed.action == "remove":
+        if not parsed.path:
+            print("error: name required for remove")
+            parser.print_usage()
+            return 1
+        if remove_project(parsed.path):
+            print(f"Disabled project: {parsed.path}")
+            return 0
+        else:
+            print(f"Project not found: {parsed.path}")
+            return 1
 
     return 0
 

@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from hopper.projects import Project
 from hopper.sessions import Session
 from hopper.tui import (
     STATUS_ACTION,
@@ -47,14 +48,15 @@ def test_session_to_row_error():
 # Tests for TUIState
 
 
-def _make_row(id: str, status: str = STATUS_IDLE) -> Row:
+def _make_row(id: str, status: str = STATUS_IDLE, project: str = "proj") -> Row:
     """Helper to create a test row."""
-    return Row(id=id, short_id=id[:8], age="1m", updated="1m", status=status)
+    return Row(id=id, short_id=id[:8], age="1m", updated="1m", status=status, project=project)
 
 
 def test_tuistate_default():
-    """Default state has new session row and cursor at 0."""
+    """Default state after rebuild has new row and cursor at 0."""
     state = TUIState()
+    state = state.rebuild_rows()
     assert len(state.ore_rows) == 1
     assert state.ore_rows[0].id == "new"
     assert state.ore_rows[0].is_action is True
@@ -190,9 +192,9 @@ def test_render_empty_processing(capsys):
     assert "[BOLD]ORE[/BOLD]" in captured.out
     assert "[BOLD]PROCESSING[/BOLD]" in captured.out
     assert "(empty)" in captured.out
-    # Footer (cursor on action row, so no Archive hint)
+    # Footer (cursor on action row with no projects, shows add hint)
     assert "Navigate" in captured.out
-    assert "New" in captured.out
+    assert "hop project add" in captured.out  # Shows CLI hint when no projects
     assert "Archive" not in captured.out
     assert "Quit" in captured.out
 
@@ -212,7 +214,7 @@ def test_render_with_sessions(capsys):
     captured = capsys.readouterr()
     # Action row with + indicator (cyan)
     assert "[CYAN]+[/CYAN]" in captured.out
-    assert "new session" in captured.out
+    assert "new" in captured.out
     # Sessions with status indicators
     assert "aaaa1111" in captured.out
     assert "bbbb2222" in captured.out
@@ -229,7 +231,7 @@ def test_render_cursor_on_session(capsys):
 
     captured = capsys.readouterr()
     # Action row not selected (no >)
-    assert "  [CYAN]+[/CYAN] new session" in captured.out
+    assert "  [CYAN]+[/CYAN] new" in captured.out
     # Session row selected
     assert "[REV]>" in captured.out
     assert "aaaa1111" in captured.out
@@ -255,17 +257,25 @@ def test_render_cursor_on_processing(capsys):
 def test_format_row_action():
     """format_row for action row shows + and label."""
     term = _mock_terminal()
-    row = new_shovel_row()
-    result = format_row(term, row, 40)
+    row = new_shovel_row("myproj")
+    result = format_row(term, row, 40, 6)
     assert "[CYAN]+[/CYAN]" in result
-    assert "new session" in result
+    assert "new" in result
+    assert "myproj" in result
 
 
 def test_format_row_session_running():
     """format_row formats running session with green indicator."""
     term = _mock_terminal()
-    row = Row(id="test-id", short_id="abcd1234", age="3m", updated="1m", status=STATUS_RUNNING)
-    result = format_row(term, row, 40)
+    row = Row(
+        id="test-id",
+        short_id="abcd1234",
+        age="3m",
+        updated="1m",
+        status=STATUS_RUNNING,
+        project="proj",
+    )
+    result = format_row(term, row, 40, 4)
     assert "[GREEN]●[/GREEN]" in result
     assert "abcd1234" in result
     assert "3m" in result
@@ -275,8 +285,15 @@ def test_format_row_session_running():
 def test_format_row_session_error():
     """format_row formats error session with red indicator."""
     term = _mock_terminal()
-    row = Row(id="test-id", short_id="abcd1234", age="3m", updated="1m", status=STATUS_ERROR)
-    result = format_row(term, row, 40)
+    row = Row(
+        id="test-id",
+        short_id="abcd1234",
+        age="3m",
+        updated="1m",
+        status=STATUS_ERROR,
+        project="proj",
+    )
+    result = format_row(term, row, 40, 4)
     assert "[RED]✗[/RED]" in result
     assert "abcd1234" in result
 
@@ -284,8 +301,15 @@ def test_format_row_session_error():
 def test_format_row_session_idle():
     """format_row formats idle session with dim indicator."""
     term = _mock_terminal()
-    row = Row(id="test-id", short_id="abcd1234", age="2h", updated="1h", status=STATUS_IDLE)
-    result = format_row(term, row, 40)
+    row = Row(
+        id="test-id",
+        short_id="abcd1234",
+        age="2h",
+        updated="1h",
+        status=STATUS_IDLE,
+        project="proj",
+    )
+    result = format_row(term, row, 40, 4)
     assert "[DIM]○[NORMAL]" in result
     assert "abcd1234" in result
     assert "2h" in result
@@ -301,9 +325,10 @@ def test_format_row_strips_newlines_from_message():
         age="1m",
         updated="1m",
         status=STATUS_ERROR,
+        project="proj",
         message="Error on\nmultiple\nlines",
     )
-    result = format_row(term, row, 60)
+    result = format_row(term, row, 60, 4)
     assert "\n" not in result
     assert "Error on multiple lines" in result
 
@@ -317,11 +342,12 @@ def test_format_row_clips_message_to_width():
         age="1m",
         updated="1m",
         status=STATUS_IDLE,
+        project="proj",
         message="This is a very long message that should be clipped",
     )
-    # Width 30 with fixed columns (22) leaves only 8 chars for message
-    result = format_row(term, row, 30)
-    assert "This is " in result
+    # Width 40 with fixed columns (26 with proj=4) leaves limited chars for message
+    result = format_row(term, row, 40, 4)
+    assert "This is" in result
     assert "clipped" not in result
 
 
@@ -370,7 +396,7 @@ def test_handle_archive_ignores_action_row():
             tmux_window=None,
         ),
     ]
-    state = TUIState(sessions=sessions, cursor_index=0)  # cursor on "new session" action
+    state = TUIState(sessions=sessions, cursor_index=0)  # cursor on "new" action
     state = state.rebuild_rows()
 
     new_state = handle_archive(state)
@@ -383,9 +409,10 @@ def test_handle_archive_ignores_action_row():
 
 
 def test_footer_shows_new_on_action_row(capsys):
-    """Footer shows 'New' when cursor is on action row."""
+    """Footer shows 'New' when cursor is on action row with a project selected."""
     term = _mock_terminal()
-    state = TUIState(cursor_index=0)
+    projects = [Project(path="/path/to/proj", name="proj")]
+    state = TUIState(projects=projects, cursor_index=0)
     state = state.rebuild_rows()
 
     render(term, state)

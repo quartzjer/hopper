@@ -29,17 +29,22 @@ def get_tmux_sessions() -> list[str]:
         return []
 
 
-def new_window(command: str, env: dict[str, str] | None = None) -> str | None:
+def new_window(
+    command: str, cwd: str | None = None, env: dict[str, str] | None = None
+) -> str | None:
     """Create a new tmux window and return its unique window ID.
 
     Args:
         command: The command to run in the new window.
+        cwd: Working directory for the new window.
         env: Environment variables to set in the new window.
 
     Returns:
         The tmux window ID (e.g., "@1") on success, None on failure.
     """
     cmd = ["tmux", "new-window", "-P", "-F", "#{window_id}"]
+    if cwd:
+        cmd.extend(["-c", cwd])
     if env:
         for key, value in env.items():
             cmd.extend(["-e", f"{key}={value}"])
