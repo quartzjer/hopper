@@ -338,7 +338,7 @@ def run_tui(term: Terminal, server=None) -> int:
         render(term, state)
 
         while True:
-            key = term.inkey()
+            key = term.inkey(timeout=1.0)
 
             if key.name == "KEY_UP" or key == "k":
                 state = state.cursor_up()
@@ -351,6 +351,8 @@ def run_tui(term: Terminal, server=None) -> int:
             elif key == "q" or key.name == "KEY_ESCAPE":
                 break
 
+            # Rebuild rows from shared session list (may be updated by server)
+            state = state.rebuild_rows()
             render(term, state)
 
     return 0
