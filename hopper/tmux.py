@@ -27,3 +27,57 @@ def get_tmux_sessions() -> list[str]:
         return [s.strip() for s in result.stdout.strip().split("\n") if s.strip()]
     except FileNotFoundError:
         return []
+
+
+def new_window(command: str, env: dict[str, str] | None = None) -> str | None:
+    """Create a new tmux window and return its unique window ID.
+
+    Args:
+        command: The command to run in the new window.
+        env: Environment variables to set in the new window.
+
+    Returns:
+        The tmux window ID (e.g., "@1") on success, None on failure.
+    """
+    cmd = ["tmux", "new-window", "-P", "-F", "#{window_id}"]
+    if env:
+        for key, value in env.items():
+            cmd.extend(["-e", f"{key}={value}"])
+    cmd.append(command)
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip()
+    except FileNotFoundError:
+        return None
+
+
+def window_exists(window_id: str) -> bool:
+    """Check if a tmux window exists by its unique ID."""
+    try:
+        result = subprocess.run(
+            ["tmux", "list-windows", "-a", "-F", "#{window_id}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False
+        windows = result.stdout.strip().split("\n")
+        return window_id in windows
+    except FileNotFoundError:
+        return False
+
+
+def select_window(window_id: str) -> bool:
+    """Switch to a tmux window by its unique ID."""
+    try:
+        result = subprocess.run(
+            ["tmux", "select-window", "-t", window_id],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
