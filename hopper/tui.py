@@ -135,7 +135,7 @@ def render(term: Terminal, state: TUIState) -> None:
                 print(f"  {row.label}")
             row_num += 1
     else:
-        print(term.dim("  (empty)"))
+        print(term.dim + "  (empty)" + term.normal)
 
 
 def handle_enter(state: TUIState) -> TUIState:
