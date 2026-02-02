@@ -11,7 +11,7 @@ Hopper manages multiple Claude Code sessions through a terminal interface. It ru
 - **Session** - A Claude Code instance with unique ID, workflow stage, state (idle/running/error), and associated tmux window
 - **Stage** - Workflow position: "ore" (new/unprocessed) or "processing" (in progress)
 - **Server** - Background Unix socket server (JSONL protocol) that owns session state and broadcasts changes to clients
-- **TUI** - Terminal interface built with `blessed` for viewing and managing sessions
+- **TUI** - Terminal interface built with `Textual` for viewing and managing sessions
 
 ## Architecture
 
@@ -26,7 +26,7 @@ CLI (hop up)
     └── TUI (main thread)
         ├── Renders from server's session list
         ├── Handles keyboard input
-        └── Spawns Claude in tmux windows via handle_enter()
+        └── Spawns Claude in tmux windows via action_select_row()
 ```
 
 **Data flow:** User input → TUI → Session mutation → Server broadcast → TUI re-render
@@ -36,7 +36,7 @@ CLI (hop up)
 **Key modules:**
 - `cli.py` - Command dispatch, guards (require_server, is_inside_tmux)
 - `server.py` - Socket server, message handling, `start_server_with_tui()`
-- `tui.py` - Rendering, state management, `handle_enter()` for session actions
+- `tui.py` - Textual App with `HopperApp` class, session tables, and action handlers
 - `sessions.py` - Session dataclass, load/save/create/archive
 - `tmux.py` - Window creation, selection, session listing
 - `claude.py` - Spawning Claude Code with session ID
@@ -52,24 +52,30 @@ pytest test/test_file.py::test_name  # Run a single test
 
 ## Coding Standards
 
-### API Validation
+### Textual Patterns
 
-When using external libraries (especially `blessed`), **validate API usage by introspecting the module** before using unfamiliar patterns:
+The TUI uses [Textual](https://textual.textualize.io/), a modern async TUI framework:
+
+- **App structure**: `HopperApp(App)` with `compose()` for layout, `BINDINGS` for keys
+- **Widgets**: Use `DataTable` for session lists, `Header`/`Footer` for chrome
+- **Styling**: Use Rich Text for colored status indicators, CSS for layout
+- **Testing**: Use `app.run_test()` async context with `pilot.press()` for input simulation
+- **Reactivity**: Update state, call `refresh_tables()` to re-render
 
 ```python
-# Check if a capability is callable or a string
-from blessed import Terminal
-t = Terminal()
-print(type(t.bold))      # <class 'FormattingString'> - callable
-print(type(t.dim))       # <class 'str'> - not callable, use concatenation
+# Textual async test pattern
+@pytest.mark.asyncio
+async def test_example():
+    app = HopperApp()
+    async with app.run_test() as pilot:
+        await pilot.press("j")  # simulate keypress
+        assert app.query_one("#ore-table").cursor_row == 1
 ```
-
-Don't assume APIs based on similar-looking patterns. When in doubt, verify.
 
 ### Testing
 
 - All new code paths should have tests
-- TUI rendering code should be tested with mock Terminal objects
+- TUI tests use Textual's async testing framework with `@pytest.mark.asyncio`
 - Use `temp_config` fixture pattern (see `test_sessions.py`) for file-based tests
 - **ALWAYS mock external state** - Tests must NEVER read real user config, files, or system state. Use fixtures/monkeypatch to isolate tests completely. A test that passes on your machine but fails on another due to user-specific state is a critical bug.
 
@@ -82,18 +88,15 @@ Don't assume APIs based on similar-looking patterns. When in doubt, verify.
 ## Development Principles
 
 - **DRY, KISS** - Extract common logic, prefer simple solutions
-- **Immutable state** - TUIState methods return new instances
 - **Atomic writes** - Write to `.tmp` then `os.replace()` for persistence
 - **Test the render path** - TUI bugs are easy to miss without render tests
 
 ## TUI Design Principles
 
-- **Unicode only, no emoji** - Use Unicode symbols (●, ○, ✗, +, ─, ━) for indicators and box-drawing. Never use emoji.
+- **Unicode only, no emoji** - Use Unicode symbols (●, ○, ✗, +) for status indicators. Never use emoji.
 - **Color for meaning** - Green=running, red=error, cyan=action, dim=idle/secondary
-- **Dynamic width** - Adapt to `term.width`, don't hardcode layouts
 - **Status at row start** - Put status indicators at the beginning of rows for quick scanning
-- **Visual hierarchy** - Title bar, section headers with column labels, footer with keybindings
-- **Box-drawing for structure** - Use ─ and ━ for separators and borders
+- **Two-table layout** - ORE (new/unprocessed) and PROCESSING sections with cursor crossing between them
 
 ## Quick Reference
 

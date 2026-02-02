@@ -277,8 +277,6 @@ class Server:
 
 def start_server_with_tui(socket_path: Path) -> int:
     """Start the server in a background thread and run the TUI."""
-    from blessed import Terminal
-
     from hopper.tui import run_tui
 
     server = Server(socket_path)
@@ -318,10 +316,9 @@ def start_server_with_tui(socket_path: Path) -> int:
         server.stop()
         return 1
 
-    # Run TUI in main thread
-    term = Terminal()
+    # Run Textual TUI in main thread
     try:
-        return run_tui(term, server)
+        return run_tui(server)
     except KeyboardInterrupt:
         return 0
     finally:

@@ -1,6 +1,6 @@
 """Tests for the TUI module."""
 
-from unittest.mock import MagicMock
+import pytest
 
 from hopper.projects import Project
 from hopper.sessions import Session
@@ -9,12 +9,10 @@ from hopper.tui import (
     STATUS_ERROR,
     STATUS_IDLE,
     STATUS_RUNNING,
+    HopperApp,
     Row,
-    TUIState,
-    format_row,
-    handle_archive,
+    format_status_text,
     new_shovel_row,
-    render,
     session_to_row,
 )
 
@@ -45,420 +43,320 @@ def test_session_to_row_error():
     assert row.status == STATUS_ERROR
 
 
-# Tests for TUIState
+# Tests for new_shovel_row
 
 
-def _make_row(id: str, status: str = STATUS_IDLE, project: str = "proj") -> Row:
-    """Helper to create a test row."""
-    return Row(id=id, short_id=id[:8], age="1m", updated="1m", status=status, project=project)
+def test_new_shovel_row():
+    """new_shovel_row creates action row with project name."""
+    row = new_shovel_row("myproj")
+    assert row.id == "new"
+    assert row.short_id == "new"
+    assert row.status == STATUS_ACTION
+    assert row.project == "myproj"
+    assert row.is_action is True
 
 
-def test_tuistate_default():
-    """Default state after rebuild has new row and cursor at 0."""
-    state = TUIState()
-    state = state.rebuild_rows()
-    assert len(state.ore_rows) == 1
-    assert state.ore_rows[0].id == "new"
-    assert state.ore_rows[0].is_action is True
-    assert state.ore_rows[0].status == STATUS_ACTION
-    assert state.cursor_index == 0
+def test_new_shovel_row_empty_project():
+    """new_shovel_row works with empty project name."""
+    row = new_shovel_row()
+    assert row.id == "new"
+    assert row.project == ""
+    assert row.is_action is True
 
 
-def test_tuistate_total_rows():
-    """total_rows counts both tables."""
-    state = TUIState(
-        ore_rows=[new_shovel_row(), _make_row("a")],
-        processing_rows=[_make_row("b"), _make_row("c")],
+# Tests for format_status_text
+
+
+def test_format_status_text_running():
+    """format_status_text returns green for running."""
+    text = format_status_text(STATUS_RUNNING)
+    assert str(text) == STATUS_RUNNING
+    assert text.style == "green"
+
+
+def test_format_status_text_error():
+    """format_status_text returns red for error."""
+    text = format_status_text(STATUS_ERROR)
+    assert str(text) == STATUS_ERROR
+    assert text.style == "red"
+
+
+def test_format_status_text_action():
+    """format_status_text returns cyan for action."""
+    text = format_status_text(STATUS_ACTION)
+    assert str(text) == STATUS_ACTION
+    assert text.style == "cyan"
+
+
+def test_format_status_text_idle():
+    """format_status_text returns dim for idle."""
+    text = format_status_text(STATUS_IDLE)
+    assert str(text) == STATUS_IDLE
+    assert text.style == "dim"
+
+
+# Tests for Row dataclass
+
+
+def test_row_dataclass():
+    """Row dataclass stores all fields."""
+    row = Row(
+        id="test-id",
+        short_id="test-sho",
+        age="1m",
+        updated="30s",
+        status=STATUS_RUNNING,
+        project="proj",
+        message="Working on it",
+        is_action=False,
     )
-    assert state.total_rows == 4
+    assert row.id == "test-id"
+    assert row.short_id == "test-sho"
+    assert row.age == "1m"
+    assert row.updated == "30s"
+    assert row.status == STATUS_RUNNING
+    assert row.project == "proj"
+    assert row.message == "Working on it"
+    assert row.is_action is False
 
 
-def test_tuistate_cursor_up():
-    """cursor_up wraps around."""
-    state = TUIState(ore_rows=[_make_row("a"), _make_row("b")], cursor_index=0)
-    new_state = state.cursor_up()
-    assert new_state.cursor_index == 1  # Wrapped to end
+# Tests for HopperApp
 
 
-def test_tuistate_cursor_down():
-    """cursor_down wraps around."""
-    state = TUIState(ore_rows=[_make_row("a"), _make_row("b")], cursor_index=1)
-    new_state = state.cursor_down()
-    assert new_state.cursor_index == 0  # Wrapped to start
+class MockServer:
+    """Mock server for testing."""
+
+    def __init__(self, sessions: list[Session] | None = None):
+        self.sessions = sessions if sessions is not None else []
 
 
-def test_tuistate_get_selected_row_ore():
-    """get_selected_row returns correct ore row."""
-    state = TUIState(
-        ore_rows=[new_shovel_row(), _make_row("a")],
-        cursor_index=1,
-    )
-    row = state.get_selected_row()
-    assert row is not None
-    assert row.id == "a"
+@pytest.mark.asyncio
+async def test_app_starts():
+    """App should start and have basic structure."""
+    app = HopperApp()
+    async with app.run_test():
+        # Should have header
+        assert app.title == "HOPPER"
+        # Should have ore and processing tables
+        ore_table = app.query_one("#ore-table")
+        assert ore_table is not None
+        processing_table = app.query_one("#processing-table")
+        assert processing_table is not None
 
 
-def test_tuistate_get_selected_row_processing():
-    """get_selected_row returns correct processing row."""
-    state = TUIState(
-        ore_rows=[new_shovel_row()],
-        processing_rows=[_make_row("b")],
-        cursor_index=1,
-    )
-    row = state.get_selected_row()
-    assert row is not None
-    assert row.id == "b"
+@pytest.mark.asyncio
+async def test_app_with_empty_sessions():
+    """App should display new row when no sessions."""
+    server = MockServer([])
+    app = HopperApp(server=server)
+    async with app.run_test():
+        ore_table = app.query_one("#ore-table")
+        # Should have exactly one row (the "new" action row)
+        assert ore_table.row_count == 1
 
 
-def test_tuistate_get_session():
-    """get_session finds session by ID."""
-    session = Session(id="test-id", stage="ore", created_at=1000)
-    state = TUIState(sessions=[session])
-    result = state.get_session("test-id")
-    assert result is session
-
-
-def test_tuistate_get_session_not_found():
-    """get_session returns None for unknown ID."""
-    state = TUIState(sessions=[])
-    result = state.get_session("nonexistent")
-    assert result is None
-
-
-def test_tuistate_rebuild_rows():
-    """rebuild_rows creates rows from sessions."""
-    sessions = [
-        Session(id="ore-1", stage="ore", created_at=1000),
-        Session(id="proc-1", stage="processing", created_at=2000),
-        Session(id="ore-2", stage="ore", created_at=3000),
-    ]
-    state = TUIState(sessions=sessions)
-    rebuilt = state.rebuild_rows()
-
-    # New shovel + 2 ore sessions
-    assert len(rebuilt.ore_rows) == 3
-    assert rebuilt.ore_rows[0].id == "new"
-    assert rebuilt.ore_rows[1].id == "ore-1"
-    assert rebuilt.ore_rows[2].id == "ore-2"
-
-    # 1 processing session
-    assert len(rebuilt.processing_rows) == 1
-    assert rebuilt.processing_rows[0].id == "proc-1"
-
-
-def test_tuistate_rebuild_rows_clamps_cursor():
-    """rebuild_rows clamps cursor to valid range."""
-    state = TUIState(
-        sessions=[],
-        ore_rows=[new_shovel_row(), _make_row("deleted")],
-        cursor_index=1,
-    )
-    # After rebuild, only "new shovel" remains, cursor should clamp to 0
-    rebuilt = state.rebuild_rows()
-    assert rebuilt.cursor_index == 0
-
-
-# Tests for render
-
-
-def _mock_terminal(width: int = 40):
-    """Create a mock Terminal that returns strings for capabilities."""
-    term = MagicMock()
-    term.home = "[HOME]"
-    term.clear = "[CLEAR]"
-    term.normal = "[NORMAL]"
-    term.dim = "[DIM]"
-    term.width = width
-    term.bold = lambda s: f"[BOLD]{s}[/BOLD]"
-    term.reverse = lambda s: f"[REV]{s}[/REV]"
-    term.green = lambda s: f"[GREEN]{s}[/GREEN]"
-    term.red = lambda s: f"[RED]{s}[/RED]"
-    term.cyan = lambda s: f"[CYAN]{s}[/CYAN]"
-    return term
-
-
-def test_render_empty_processing(capsys):
-    """render shows header, tables, and footer."""
-    term = _mock_terminal()
-    state = TUIState()
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    # Header
-    assert "HOPPER" in captured.out
-    # Tables
-    assert "[BOLD]ORE[/BOLD]" in captured.out
-    assert "[BOLD]PROCESSING[/BOLD]" in captured.out
-    assert "(empty)" in captured.out
-    # Footer (cursor on action row with no projects, shows add hint)
-    assert "Navigate" in captured.out
-    assert "hop project add" in captured.out  # Shows CLI hint when no projects
-    assert "Archive" not in captured.out
-    assert "Quit" in captured.out
-
-
-def test_render_with_sessions(capsys):
-    """render shows sessions in correct tables."""
-    term = _mock_terminal()
+@pytest.mark.asyncio
+async def test_app_with_sessions():
+    """App should display sessions in correct tables."""
     sessions = [
         Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
         Session(id="bbbb2222-uuid", stage="processing", created_at=2000),
     ]
-    state = TUIState(sessions=sessions)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    # Action row with + indicator (cyan)
-    assert "[CYAN]+[/CYAN]" in captured.out
-    assert "new" in captured.out
-    # Sessions with status indicators
-    assert "aaaa1111" in captured.out
-    assert "bbbb2222" in captured.out
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test():
+        ore_table = app.query_one("#ore-table")
+        processing_table = app.query_one("#processing-table")
+        # Ore table: new row + 1 session
+        assert ore_table.row_count == 2
+        # Processing table: 1 session
+        assert processing_table.row_count == 1
 
 
-def test_render_cursor_on_session(capsys):
-    """render highlights the selected row."""
-    term = _mock_terminal()
-    sessions = [Session(id="aaaa1111-uuid", stage="ore", created_at=1000)]
-    state = TUIState(sessions=sessions, cursor_index=1)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    # Action row not selected (no >)
-    assert "  [CYAN]+[/CYAN] new" in captured.out
-    # Session row selected
-    assert "[REV]>" in captured.out
-    assert "aaaa1111" in captured.out
+@pytest.mark.asyncio
+async def test_quit_with_q():
+    """q should quit the app."""
+    app = HopperApp()
+    async with app.run_test() as pilot:
+        await pilot.press("q")
+        # App should be exiting
+        assert app._exit
 
 
-def test_render_cursor_on_processing(capsys):
-    """render highlights processing row when selected."""
-    term = _mock_terminal()
-    sessions = [Session(id="bbbb2222-uuid", stage="processing", created_at=1000)]
-    state = TUIState(sessions=sessions, cursor_index=1)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    assert "[REV]>" in captured.out
-    assert "bbbb2222" in captured.out
-
-
-# Tests for format_row
-
-
-def test_format_row_action():
-    """format_row for action row shows + and label."""
-    term = _mock_terminal()
-    row = new_shovel_row("myproj")
-    result = format_row(term, row, 40, 6)
-    assert "[CYAN]+[/CYAN]" in result
-    assert "new" in result
-    assert "myproj" in result
-
-
-def test_format_row_session_running():
-    """format_row formats running session with green indicator."""
-    term = _mock_terminal()
-    row = Row(
-        id="test-id",
-        short_id="abcd1234",
-        age="3m",
-        updated="1m",
-        status=STATUS_RUNNING,
-        project="proj",
-    )
-    result = format_row(term, row, 40, 4)
-    assert "[GREEN]●[/GREEN]" in result
-    assert "abcd1234" in result
-    assert "3m" in result
-    assert "1m" in result
-
-
-def test_format_row_session_error():
-    """format_row formats error session with red indicator."""
-    term = _mock_terminal()
-    row = Row(
-        id="test-id",
-        short_id="abcd1234",
-        age="3m",
-        updated="1m",
-        status=STATUS_ERROR,
-        project="proj",
-    )
-    result = format_row(term, row, 40, 4)
-    assert "[RED]✗[/RED]" in result
-    assert "abcd1234" in result
-
-
-def test_format_row_session_idle():
-    """format_row formats idle session with dim indicator."""
-    term = _mock_terminal()
-    row = Row(
-        id="test-id",
-        short_id="abcd1234",
-        age="2h",
-        updated="1h",
-        status=STATUS_IDLE,
-        project="proj",
-    )
-    result = format_row(term, row, 40, 4)
-    assert "[DIM]○[NORMAL]" in result
-    assert "abcd1234" in result
-    assert "2h" in result
-    assert "1h" in result
-
-
-def test_format_row_strips_newlines_from_message():
-    """format_row replaces newlines with spaces in message."""
-    term = _mock_terminal()
-    row = Row(
-        id="test-id",
-        short_id="abcd1234",
-        age="1m",
-        updated="1m",
-        status=STATUS_ERROR,
-        project="proj",
-        message="Error on\nmultiple\nlines",
-    )
-    result = format_row(term, row, 60, 4)
-    assert "\n" not in result
-    assert "Error on multiple lines" in result
-
-
-def test_format_row_clips_message_to_width():
-    """format_row clips message to available width."""
-    term = _mock_terminal()
-    row = Row(
-        id="test-id",
-        short_id="abcd1234",
-        age="1m",
-        updated="1m",
-        status=STATUS_IDLE,
-        project="proj",
-        message="This is a very long message that should be clipped",
-    )
-    # Width 40 with fixed columns (26 with proj=4) leaves limited chars for message
-    result = format_row(term, row, 40, 4)
-    assert "This is" in result
-    assert "clipped" not in result
-
-
-# Tests for handle_archive
-
-
-def test_handle_archive_removes_session():
-    """handle_archive removes the selected session."""
+@pytest.mark.asyncio
+async def test_cursor_down_navigation():
+    """j/down should move cursor down."""
     sessions = [
-        Session(
-            id="keep-id",
-            stage="ore",
-            created_at=1000,
-            updated_at=1000,
-            state="idle",
-            tmux_window=None,
-        ),
-        Session(
-            id="archive-id",
-            stage="ore",
-            created_at=2000,
-            updated_at=2000,
-            state="idle",
-            tmux_window=None,
-        ),
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="ore", created_at=2000),
     ]
-    state = TUIState(sessions=sessions, cursor_index=2)  # cursor on archive-id (after new + keep)
-    state = state.rebuild_rows()
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        ore_table = app.query_one("#ore-table")
+        # Should start at row 0
+        assert ore_table.cursor_row == 0
+        # Press j to move down
+        await pilot.press("j")
+        assert ore_table.cursor_row == 1
 
-    new_state = handle_archive(state)
 
-    # Session should be removed from list
-    assert len(new_state.sessions) == 1
-    assert new_state.sessions[0].id == "keep-id"
-
-
-def test_handle_archive_ignores_action_row():
-    """handle_archive does nothing when action row is selected."""
+@pytest.mark.asyncio
+async def test_cursor_up_navigation():
+    """k/up should move cursor up."""
     sessions = [
-        Session(
-            id="test-id",
-            stage="ore",
-            created_at=1000,
-            updated_at=1000,
-            state="idle",
-            tmux_window=None,
-        ),
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="ore", created_at=2000),
     ]
-    state = TUIState(sessions=sessions, cursor_index=0)  # cursor on "new" action
-    state = state.rebuild_rows()
-
-    new_state = handle_archive(state)
-
-    # Session should still be there
-    assert len(new_state.sessions) == 1
-
-
-# Tests for context-sensitive footer hints
-
-
-def test_footer_shows_new_on_action_row(capsys):
-    """Footer shows 'New' when cursor is on action row with a project selected."""
-    term = _mock_terminal()
-    projects = [Project(path="/path/to/proj", name="proj")]
-    state = TUIState(projects=projects, cursor_index=0)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    assert "New" in captured.out
-    assert "Archive" not in captured.out
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        ore_table = app.query_one("#ore-table")
+        # Move down first
+        await pilot.press("j")
+        await pilot.press("j")
+        assert ore_table.cursor_row == 2
+        # Press k to move up
+        await pilot.press("k")
+        assert ore_table.cursor_row == 1
 
 
-def test_footer_shows_switch_on_running_session(capsys):
-    """Footer shows 'Switch' when cursor is on running session."""
-    term = _mock_terminal()
-    sessions = [Session(id="aaaa1111-uuid", stage="ore", created_at=1000, state="running")]
-    state = TUIState(sessions=sessions, cursor_index=1)  # cursor on session (after new)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    assert "Switch" in captured.out
-    assert "Archive" in captured.out
-
-
-def test_footer_shows_resume_on_idle_session(capsys):
-    """Footer shows 'Resume' when cursor is on idle session."""
-    term = _mock_terminal()
-    sessions = [Session(id="aaaa1111-uuid", stage="ore", created_at=1000, state="idle")]
-    state = TUIState(sessions=sessions, cursor_index=1)
-    state = state.rebuild_rows()
-
-    render(term, state)
-
-    captured = capsys.readouterr()
-    assert "Resume" in captured.out
-    assert "Archive" in captured.out
+@pytest.mark.asyncio
+async def test_cross_table_navigation_down():
+    """Cursor should cross from ore to processing table."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="processing", created_at=2000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        # Start in ore table (new row + 1 session = 2 rows)
+        assert app._active_table == "ore"
+        # Move to bottom of ore table
+        await pilot.press("j")  # row 1
+        await pilot.press("j")  # should cross to processing
+        assert app._active_table == "processing"
 
 
-def test_footer_shows_resume_on_error_session(capsys):
-    """Footer shows 'Resume' when cursor is on error session."""
-    term = _mock_terminal()
-    sessions = [Session(id="aaaa1111-uuid", stage="ore", created_at=1000, state="error")]
-    state = TUIState(sessions=sessions, cursor_index=1)
-    state = state.rebuild_rows()
+@pytest.mark.asyncio
+async def test_cross_table_navigation_up():
+    """Cursor should cross from processing to ore table."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="processing", created_at=2000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        # Navigate to processing table
+        await pilot.press("j")
+        await pilot.press("j")
+        assert app._active_table == "processing"
+        # Move up should go back to ore
+        await pilot.press("k")
+        assert app._active_table == "ore"
 
-    render(term, state)
 
-    captured = capsys.readouterr()
-    assert "Resume" in captured.out
-    assert "Archive" in captured.out
+@pytest.mark.asyncio
+async def test_project_cycling():
+    """h/l should cycle projects on action row."""
+    server = MockServer([])
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        # Inject projects after mounting (on_mount overwrites _projects)
+        app._projects = [
+            Project(path="/path/to/proj1", name="proj1"),
+            Project(path="/path/to/proj2", name="proj2"),
+        ]
+        # Should start with first project
+        assert app._selected_project_index == 0
+        # Press l to cycle right
+        await pilot.press("l")
+        assert app._selected_project_index == 1
+        # Press l again to go to "add..."
+        await pilot.press("l")
+        assert app._selected_project_index == 2
+        assert app.is_add_project_selected
+        # Press l to wrap to first
+        await pilot.press("l")
+        assert app._selected_project_index == 0
+        # Press h to go back to "add..."
+        await pilot.press("h")
+        assert app._selected_project_index == 2
+
+
+@pytest.mark.asyncio
+async def test_project_cycling_only_on_action_row():
+    """h/l should not cycle projects when not on action row."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        # Inject projects after mounting
+        app._projects = [
+            Project(path="/path/to/proj1", name="proj1"),
+            Project(path="/path/to/proj2", name="proj2"),
+        ]
+        # Move off action row
+        await pilot.press("j")
+        assert app._selected_project_index == 0
+        # Press l should not change project
+        await pilot.press("l")
+        assert app._selected_project_index == 0
+
+
+@pytest.mark.asyncio
+async def test_is_on_action_row():
+    """_is_on_action_row should detect action row correctly."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        # Should start on action row
+        assert app._is_on_action_row()
+        # Move down
+        await pilot.press("j")
+        assert not app._is_on_action_row()
+
+
+@pytest.mark.asyncio
+async def test_selected_project():
+    """selected_project should return the correct project."""
+    server = MockServer([])
+    app = HopperApp(server=server)
+    async with app.run_test():
+        # Inject projects after mounting
+        app._projects = [
+            Project(path="/path/to/proj1", name="proj1"),
+            Project(path="/path/to/proj2", name="proj2"),
+        ]
+        assert app.selected_project is not None
+        assert app.selected_project.name == "proj1"
+        app._selected_project_index = 1
+        assert app.selected_project.name == "proj2"
+        # Past end = no project selected
+        app._selected_project_index = 2
+        assert app.selected_project is None
+
+
+@pytest.mark.asyncio
+async def test_get_session():
+    """_get_session should find session by ID."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="processing", created_at=2000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test():
+        session = app._get_session("aaaa1111-uuid")
+        assert session is not None
+        assert session.id == "aaaa1111-uuid"
+
+        session = app._get_session("nonexistent")
+        assert session is None

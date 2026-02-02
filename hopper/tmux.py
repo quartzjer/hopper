@@ -59,22 +59,6 @@ def new_window(
         return None
 
 
-def window_exists(window_id: str) -> bool:
-    """Check if a tmux window exists by its unique ID."""
-    try:
-        result = subprocess.run(
-            ["tmux", "list-windows", "-a", "-F", "#{window_id}"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return False
-        windows = result.stdout.strip().split("\n")
-        return window_id in windows
-    except FileNotFoundError:
-        return False
-
-
 def select_window(window_id: str) -> bool:
     """Switch to a tmux window by its unique ID."""
     try:
