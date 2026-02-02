@@ -8,11 +8,35 @@ import sys
 import threading
 from pathlib import Path
 
+from hopper import prompt
 from hopper.client import get_session_state, ping, set_session_state
 
 logger = logging.getLogger(__name__)
 
 RECONNECT_INTERVAL = 2.0  # seconds between reconnection attempts
+ERROR_LINES = 5  # Number of stderr lines to capture on error
+
+
+def _extract_error_message(stderr_bytes: bytes) -> str | None:
+    """Extract last N lines from stderr as error message.
+
+    Args:
+        stderr_bytes: Raw stderr output from subprocess
+
+    Returns:
+        Last ERROR_LINES lines joined with newlines, or None if empty
+    """
+    if not stderr_bytes:
+        return None
+
+    text = stderr_bytes.decode("utf-8", errors="replace")
+    lines = text.strip().splitlines()
+    if not lines:
+        return None
+
+    # Take last N lines, preserve newlines
+    tail = lines[-ERROR_LINES:]
+    return "\n".join(tail)
 
 
 class OreRunner:
@@ -55,7 +79,9 @@ class OreRunner:
             elif exit_code == 130:
                 self._notify_state("idle", "Interrupted")
             else:
-                self._notify_state("error", f"Exited with code {exit_code}")
+                # Use captured stderr if available, otherwise generic message
+                msg = error_msg or f"Exited with code {exit_code}"
+                self._notify_state("error", msg)
 
             return exit_code
 
@@ -110,23 +136,31 @@ class OreRunner:
         env = os.environ.copy()
         env["HOPPER_SID"] = self.session_id
 
-        # Build command - use --resume for existing sessions
+        # Build command - use --resume for existing sessions, prompt for new
         if self.is_new_session:
-            cmd = ["claude"]
+            initial_prompt = prompt.load("shovel")
+            cmd = ["claude", "--session-id", self.session_id, initial_prompt]
         else:
             cmd = ["claude", "--resume", self.session_id]
 
         logger.debug(f"Running: {' '.join(cmd)}")
 
         try:
-            # Start Claude process
-            proc = subprocess.Popen(cmd, env=env)
+            # Start Claude process, capturing stderr for error messages
+            proc = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE)
 
             # Notify server we're running (after successful process start)
             self._notify_active()
 
             # Wait for Claude to complete
             proc.wait()
+
+            # On non-zero exit, extract last 5 lines of stderr as error message
+            if proc.returncode != 0 and proc.stderr:
+                stderr_bytes = proc.stderr.read()
+                error_msg = _extract_error_message(stderr_bytes)
+                return proc.returncode, error_msg
+
             return proc.returncode, None
         except FileNotFoundError:
             logger.error("claude command not found")

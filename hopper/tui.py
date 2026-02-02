@@ -168,7 +168,9 @@ def format_row(term: Terminal, row: Row, width: int) -> str:
     # Fixed: "● " (2) + id (8) + "  " (2) + age (3) + "  " (2) + upd (3) + "  " (2) = 22
     fixed_width = 2 + COL_ID + 2 + COL_AGE + 2 + COL_AGE + 2
     msg_width = max(0, width - fixed_width)
-    msg_part = row.message[:msg_width] if row.message else ""
+    # Strip newlines for single-line display, then clip to width
+    msg_text = row.message.replace("\n", " ") if row.message else ""
+    msg_part = msg_text[:msg_width]
 
     return f"{status_str} {id_part}  {age_part}  {updated_part}  {msg_part}"
 

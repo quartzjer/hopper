@@ -292,6 +292,39 @@ def test_format_row_session_idle():
     assert "1h" in result
 
 
+def test_format_row_strips_newlines_from_message():
+    """format_row replaces newlines with spaces in message."""
+    term = _mock_terminal()
+    row = Row(
+        id="test-id",
+        short_id="abcd1234",
+        age="1m",
+        updated="1m",
+        status=STATUS_ERROR,
+        message="Error on\nmultiple\nlines",
+    )
+    result = format_row(term, row, 60)
+    assert "\n" not in result
+    assert "Error on multiple lines" in result
+
+
+def test_format_row_clips_message_to_width():
+    """format_row clips message to available width."""
+    term = _mock_terminal()
+    row = Row(
+        id="test-id",
+        short_id="abcd1234",
+        age="1m",
+        updated="1m",
+        status=STATUS_IDLE,
+        message="This is a very long message that should be clipped",
+    )
+    # Width 30 with fixed columns (22) leaves only 8 chars for message
+    result = format_row(term, row, 30)
+    assert "This is " in result
+    assert "clipped" not in result
+
+
 # Tests for handle_archive
 
 
