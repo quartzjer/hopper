@@ -3,24 +3,18 @@
 from hopper.tmux import new_window, select_window
 
 
-def spawn_claude(session_id: str, resume: bool = False) -> str | None:
-    """Spawn Claude Code in a new tmux window.
+def spawn_claude(session_id: str) -> str | None:
+    """Spawn Claude via hopper ore in a new tmux window.
 
     Args:
         session_id: The hopper session ID.
-        resume: If True, resume an existing Claude session instead of starting fresh.
 
     Returns:
         The tmux window ID on success, None on failure.
     """
-    env = {"HOPPER_SID": session_id}
-
-    if resume:
-        command = f"claude --resume {session_id}"
-    else:
-        command = f"claude --session-id {session_id}"
-
-    return new_window(command, env)
+    # Use hopper ore to manage session lifecycle
+    command = f"hopper ore {session_id}"
+    return new_window(command)
 
 
 def switch_to_window(window_id: str) -> bool:

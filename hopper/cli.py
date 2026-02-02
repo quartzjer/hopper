@@ -2,6 +2,8 @@ import os
 import sys
 from collections.abc import Callable
 
+import setproctitle
+
 from hopper import __version__
 from hopper.config import DATA_DIR, SOCKET_PATH
 
@@ -105,6 +107,30 @@ def cmd_up(args: list[str]) -> int:
     return start_server_with_tui(SOCKET_PATH)
 
 
+@command("ore", "Run Claude for a session")
+def cmd_ore(args: list[str]) -> int:
+    """Run Claude for a session, managing active/inactive state."""
+    from hopper.client import session_exists
+    from hopper.ore import run_ore
+
+    if not args:
+        print("Usage: hopper ore <session-id>")
+        return 1
+
+    session_id = args[0]
+
+    # Server must be running (but we proceed gracefully if it dies mid-session)
+    if err := require_server():
+        return err
+
+    # Validate session exists
+    if not session_exists(SOCKET_PATH, session_id):
+        print(f"Session {session_id} not found.")
+        return 1
+
+    return run_ore(session_id, SOCKET_PATH)
+
+
 @command("ping", "Check if server is running")
 def cmd_ping(args: list[str]) -> int:
     """Ping the server."""
@@ -148,6 +174,9 @@ def main() -> int:
         print()
         print_help()
         return 1
+
+    # Set process title
+    setproctitle.setproctitle(f"hop:{cmd}")
 
     # Dispatch to command handler
     handler, _ = COMMANDS[cmd]

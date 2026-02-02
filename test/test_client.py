@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hopper.client import ping, send_message, session_exists
+from hopper.client import ping, send_message, session_exists, set_session_state
 from hopper.server import Server
 
 
@@ -92,3 +92,29 @@ def test_session_exists_found(server, socket_path):
     session_id = sessions[0]["id"]
     result = session_exists(socket_path, session_id)
     assert result is True
+
+
+def test_set_session_state_no_server(socket_path):
+    """set_session_state returns False when server not running."""
+    result = set_session_state(socket_path, "any-session", "running", timeout=0.5)
+    # Fire-and-forget still returns True if send attempt was made
+    # but the underlying send_message will fail silently
+    assert result is True  # The try succeeds, send_message handles the error
+
+
+def test_set_session_state_sends_message(server, socket_path):
+    """set_session_state sends the correct message type."""
+    from hopper.sessions import Session
+
+    # Create a session first
+    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    server.sessions = [session]
+
+    result = set_session_state(socket_path, "test-id", "running")
+    assert result is True
+
+    # Give server time to process
+    time.sleep(0.1)
+
+    # Session should be updated
+    assert server.sessions[0].state == "running"

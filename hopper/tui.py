@@ -250,18 +250,14 @@ def handle_enter(state: TUIState) -> TUIState:
     if row.id == "new":
         # Create a new session (create_session saves to disk with timestamps)
         session = create_session(state.sessions)
-        session.state = "running"
-        session.touch()
 
-        # Spawn claude
-        window_id = spawn_claude(session.id, resume=False)
+        # Spawn hopper ore (which manages state via server messages)
+        window_id = spawn_claude(session.id)
         if window_id:
             session.tmux_window = window_id
-        else:
-            session.state = "error"
+            save_sessions(state.sessions)
+        # Note: state will be updated by ore process via server broadcast
 
-        # Save state/window updates (create_session already saved the initial session)
-        save_sessions(state.sessions)
         return state.rebuild_rows()
 
     # Existing session - try to switch or respawn
@@ -271,21 +267,15 @@ def handle_enter(state: TUIState) -> TUIState:
 
     # Try to switch to existing window
     if session.tmux_window and switch_to_window(session.tmux_window):
-        # Successfully switched - ensure state reflects running
-        if session.state != "running":
-            session.state = "running"
-            session.touch()
-            save_sessions(state.sessions)
+        # Successfully switched - ore process manages state
+        pass
     else:
-        # Window doesn't exist or switch failed - respawn claude with resume
-        session.state = "running"
-        session.touch()
-        window_id = spawn_claude(session.id, resume=True)
+        # Window doesn't exist or switch failed - respawn
+        window_id = spawn_claude(session.id)
         if window_id:
             session.tmux_window = window_id
-        else:
-            session.state = "error"
-        save_sessions(state.sessions)
+            save_sessions(state.sessions)
+        # Note: state will be updated by ore process via server broadcast
 
     return state.rebuild_rows()
 

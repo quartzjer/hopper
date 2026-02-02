@@ -16,6 +16,7 @@ from hopper.sessions import (
     create_session,
     load_sessions,
     update_session_stage,
+    update_session_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,14 @@ class Server:
                 session = archive_session(self.sessions, session_id)
                 if session:
                     self.broadcast({"type": "session_archived", "session": session.to_dict()})
+
+        elif msg_type == "session_set_state":
+            session_id = message.get("session_id")
+            state = message.get("state")
+            if session_id and state in ("idle", "running", "error"):
+                session = update_session_state(self.sessions, session_id, state)
+                if session:
+                    self.broadcast({"type": "session_state_changed", "session": session.to_dict()})
 
         else:
             # Broadcast other messages

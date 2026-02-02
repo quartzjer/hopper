@@ -7,7 +7,17 @@ import time
 
 import pytest
 
+from hopper import sessions
 from hopper.server import Server
+
+
+@pytest.fixture
+def temp_config(tmp_path, monkeypatch):
+    """Set up temporary paths for session files."""
+    monkeypatch.setattr(sessions, "SESSIONS_FILE", tmp_path / "sessions.jsonl")
+    monkeypatch.setattr(sessions, "ARCHIVED_FILE", tmp_path / "archived.jsonl")
+    monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "sessions")
+    return tmp_path
 
 
 @pytest.fixture
@@ -118,3 +128,41 @@ def test_server_sends_shutdown_to_clients(socket_path):
 
     client.close()
     thread.join(timeout=2)
+
+
+def test_server_handles_session_set_state(socket_path, server, temp_config):
+    """Server handles session_set_state message."""
+    from hopper.sessions import Session, save_sessions
+
+    # Create a test session
+    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    # Connect client
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    # Wait for client to be registered
+    for _ in range(50):
+        if len(server.clients) > 0:
+            break
+        time.sleep(0.1)
+
+    # Send session_set_state message
+    msg = {"type": "session_set_state", "session_id": "test-id", "state": "running"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    # Should receive broadcast
+    data = client.recv(4096).decode("utf-8")
+    response = json.loads(data.strip().split("\n")[0])
+
+    assert response["type"] == "session_state_changed"
+    assert response["session"]["id"] == "test-id"
+    assert response["session"]["state"] == "running"
+
+    # Server's session object should be updated
+    assert server.sessions[0].state == "running"
+
+    client.close()

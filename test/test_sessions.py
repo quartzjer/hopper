@@ -18,6 +18,7 @@ from hopper.sessions import (
     load_sessions,
     save_sessions,
     update_session_stage,
+    update_session_state,
 )
 
 
@@ -352,3 +353,30 @@ def test_update_session_stage_touches(temp_config):
 
     assert updated is not None
     assert updated.updated_at > 1000
+
+
+def test_update_session_state(temp_config):
+    """update_session_state changes state and touches timestamp."""
+    sessions_list = [
+        Session(id="test-id", stage="ore", created_at=1000, updated_at=1000, state="idle")
+    ]
+    save_sessions(sessions_list)
+
+    updated = update_session_state(sessions_list, "test-id", "running")
+
+    assert updated is not None
+    assert updated.state == "running"
+    assert updated.updated_at > 1000
+
+    # Verify persistence
+    loaded = load_sessions()
+    assert loaded[0].state == "running"
+
+
+def test_update_session_state_not_found(temp_config):
+    """update_session_state returns None for unknown session."""
+    sessions_list = []
+
+    result = update_session_state(sessions_list, "nonexistent", "running")
+
+    assert result is None

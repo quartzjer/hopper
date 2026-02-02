@@ -85,3 +85,29 @@ def session_exists(socket_path: Path, session_id: str, timeout: float = 2.0) -> 
         return False
     sessions = response.get("sessions", [])
     return any(s.get("id") == session_id for s in sessions)
+
+
+def set_session_state(socket_path: Path, session_id: str, state: str, timeout: float = 2.0) -> bool:
+    """Set a session's state (fire-and-forget).
+
+    Args:
+        socket_path: Path to the Unix socket
+        session_id: The session ID to update
+        state: New state ("idle", "running", or "error")
+        timeout: Connection timeout in seconds
+
+    Returns:
+        True if message was sent successfully, False otherwise
+    """
+    message = {
+        "type": "session_set_state",
+        "session_id": session_id,
+        "state": state,
+        "ts": int(time.time() * 1000),
+    }
+    # Fire-and-forget: don't wait for response
+    try:
+        send_message(socket_path, message, timeout=timeout, wait_for_response=False)
+        return True
+    except Exception:
+        return False

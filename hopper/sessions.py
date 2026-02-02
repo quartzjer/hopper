@@ -179,6 +179,17 @@ def archive_session(sessions: list[Session], session_id: str) -> Session | None:
     return None
 
 
+def update_session_state(sessions: list[Session], session_id: str, state: State) -> Session | None:
+    """Update a session's state. Returns the updated session or None if not found."""
+    for session in sessions:
+        if session.id == session_id:
+            session.state = state
+            session.touch()
+            save_sessions(sessions)
+            return session
+    return None
+
+
 def find_by_short_id(sessions: list[Session], prefix: str) -> Session | None:
     """Find a session by ID prefix.
 
