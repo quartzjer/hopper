@@ -535,6 +535,65 @@ def cmd_shovel(args: list[str]) -> int:
     return 0
 
 
+@command("refined", "Signal that refine workflow is complete")
+def cmd_refined(args: list[str]) -> int:
+    """Signal that the refine workflow is complete for this session."""
+    from hopper.client import set_session_state
+
+    parser = make_parser(
+        "refined",
+        "Signal that the refine workflow is complete. "
+        "Called by Claude from within a refine session.",
+    )
+    try:
+        parse_args(parser, args)
+    except SystemExit:
+        return 0
+    except ArgumentError as e:
+        print(f"error: {e}")
+        parser.print_usage()
+        return 1
+
+    if err := require_server():
+        return err
+
+    session_id = get_hopper_sid()
+    if not session_id:
+        print("HOPPER_SID not set. Run this from within a hopper session.")
+        return 1
+
+    if err := validate_hopper_sid():
+        return err
+
+    set_session_state(SOCKET_PATH, session_id, "completed", "Refine complete")
+
+    print("Refine complete.")
+    return 0
+
+
+@command("task", "Run a task prompt via Codex")
+def cmd_task(args: list[str]) -> int:
+    """Run a task prompt via Codex in one-shot mode."""
+    from hopper.task import run_task
+
+    parser = make_parser("task", "Run a prompts/<task>.md file via Codex for a session.")
+    parser.add_argument("task", help="Task name (matches prompts/<task>.md)")
+    parser.add_argument("session_id", help="Session ID to run")
+    try:
+        parsed = parse_args(parser, args)
+    except SystemExit:
+        return 0
+    except ArgumentError as e:
+        print(f"error: {e}")
+        parser.print_usage()
+        return 1
+
+    if err := require_server():
+        return err
+
+    return run_task(parsed.session_id, SOCKET_PATH, parsed.task)
+
+
 @command("backlog", "Manage backlog items")
 def cmd_backlog(args: list[str]) -> int:
     """Manage backlog items (list, add, remove)."""

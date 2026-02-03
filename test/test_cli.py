@@ -12,6 +12,7 @@ from hopper.cli import (
     cmd_screenshot,
     cmd_shovel,
     cmd_status,
+    cmd_task,
     cmd_up,
     get_hopper_sid,
     main,
@@ -867,3 +868,116 @@ def test_shovel_saves_file(tmp_path, monkeypatch, capsys):
     assert sid == session_id
     assert state == "completed"
     assert "complete" in status.lower()
+
+
+# Tests for refined command
+
+
+def test_refined_help(capsys):
+    """refined --help shows help and returns 0."""
+    from hopper.cli import cmd_refined
+
+    result = cmd_refined(["--help"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "usage: hop refined" in captured.out
+
+
+def test_refined_no_server(capsys):
+    """refined returns 1 when server not running."""
+    from hopper.cli import cmd_refined
+
+    with patch("hopper.client.ping", return_value=False):
+        result = cmd_refined([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Server not running" in captured.out
+
+
+def test_refined_no_hopper_sid(capsys):
+    """refined returns 1 when HOPPER_SID not set."""
+    from hopper.cli import cmd_refined
+
+    env = os.environ.copy()
+    env.pop("HOPPER_SID", None)
+    with patch.dict(os.environ, env, clear=True):
+        with patch("hopper.client.ping", return_value=True):
+            result = cmd_refined([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "HOPPER_SID not set" in captured.out
+
+
+def test_refined_invalid_session(capsys):
+    """refined returns 1 when session doesn't exist."""
+    from hopper.cli import cmd_refined
+
+    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.session_exists", return_value=False):
+                result = cmd_refined([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "bad-session" in captured.out
+    assert "not found or archived" in captured.out
+
+
+def test_refined_success(capsys):
+    """refined sets state to completed and prints confirmation."""
+    from hopper.cli import cmd_refined
+
+    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.session_exists", return_value=True):
+                with patch("hopper.client.set_session_state", return_value=True) as mock_set:
+                    result = cmd_refined([])
+
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "Refine complete" in captured.out
+
+    mock_set.assert_called_once()
+    _, sid, state, status = mock_set.call_args[0]
+    assert sid == "test-session"
+    assert state == "completed"
+    assert "Refine complete" in status
+
+
+# Tests for task command
+
+
+def test_task_help(capsys):
+    """task --help shows help and returns 0."""
+    result = cmd_task(["--help"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "usage: hop task" in captured.out
+    assert "task" in captured.out
+
+
+def test_task_missing_args(capsys):
+    """task requires both task name and session_id."""
+    result = cmd_task([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "error:" in captured.out
+
+
+def test_task_missing_session_id(capsys):
+    """task requires session_id argument."""
+    result = cmd_task(["audit"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "error:" in captured.out
+
+
+def test_task_dispatches_to_run_task(capsys):
+    """task dispatches to run_task on valid input."""
+    with patch("hopper.cli.require_server", return_value=None):
+        with patch("hopper.task.run_task", return_value=0) as mock_run:
+            result = cmd_task(["audit", "test-1234"])
+    assert result == 0
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0]
+    assert args[0] == "test-1234"  # session_id
+    assert args[2] == "audit"  # task_name

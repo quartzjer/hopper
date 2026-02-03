@@ -305,7 +305,7 @@ def set_session_state(
     Args:
         socket_path: Path to the Unix socket
         session_id: The session ID to update
-        state: New state ("new", "running", "stuck", "error", "completed", or "ready")
+        state: New state (freeform string, e.g. "new", "running", "error", task names, etc.)
         status: Human-readable status text
         timeout: Connection timeout in seconds
 

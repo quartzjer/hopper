@@ -7,7 +7,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from hopper.config import ARCHIVED_FILE, SESSIONS_DIR, SESSIONS_FILE
 
@@ -34,10 +33,6 @@ def _check_test_isolation() -> None:
             "from conftest.py is active. This usually means a test is missing the "
             "fixture or running outside pytest."
         )
-
-
-Stage = Literal["ore", "processing"]
-State = Literal["new", "running", "stuck", "error", "completed", "ready"]
 
 
 SHORT_ID_LEN = 8  # Standard short ID length (first segment of UUID)
@@ -118,12 +113,12 @@ class Session:
     """A hopper session."""
 
     id: str
-    stage: Stage
+    stage: str  # "ore" or "processing"
     created_at: int  # milliseconds since epoch
     project: str = ""  # Project name this session belongs to
     scope: str = ""  # User's task scope description
     updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
-    state: State = "new"
+    state: str = "new"  # Freeform: "new", "running", "stuck", "error", task names, etc.
     status: str = ""  # Human-readable status text
     active: bool = False  # Whether a hop ore client is connected
     tmux_window: str | None = None  # tmux window ID (e.g., "@1")
@@ -233,7 +228,7 @@ def create_session(sessions: list[Session], project: str, scope: str = "") -> Se
     return session
 
 
-def update_session_stage(sessions: list[Session], session_id: str, stage: Stage) -> Session | None:
+def update_session_stage(sessions: list[Session], session_id: str, stage: str) -> Session | None:
     """Update a session's stage. Returns the updated session or None if not found."""
     for session in sessions:
         if session.id == session_id:
@@ -266,7 +261,7 @@ def archive_session(sessions: list[Session], session_id: str) -> Session | None:
 
 
 def update_session_state(
-    sessions: list[Session], session_id: str, state: State, status: str
+    sessions: list[Session], session_id: str, state: str, status: str
 ) -> Session | None:
     """Update a session's state and status. Returns the updated session or None if not found."""
     for session in sessions:

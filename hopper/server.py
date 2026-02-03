@@ -277,14 +277,7 @@ class Server:
             session_id = message.get("session_id")
             state = message.get("state")
             status = message.get("status", "")
-            if session_id and state in (
-                "new",
-                "running",
-                "stuck",
-                "error",
-                "completed",
-                "ready",
-            ):
+            if session_id and state:
                 session = update_session_state(self.sessions, session_id, state, status)
                 if session:
                     self.broadcast({"type": "session_state_changed", "session": session.to_dict()})

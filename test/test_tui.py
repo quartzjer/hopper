@@ -10,7 +10,6 @@ from hopper.tui import (
     STAGE_PROCESSING,
     STATUS_ERROR,
     STATUS_NEW,
-    STATUS_READY,
     STATUS_RUNNING,
     STATUS_STUCK,
     HopperApp,
@@ -93,10 +92,17 @@ def test_session_to_row_completed():
 
 
 def test_session_to_row_ready():
-    """Ready session shows ready indicator."""
+    """Ready session shows running indicator (active work)."""
     session = Session(id="abcd1234-5678-uuid", stage="processing", created_at=1000, state="ready")
     row = session_to_row(session)
-    assert row.status == STATUS_READY
+    assert row.status == STATUS_RUNNING
+
+
+def test_session_to_row_task_state():
+    """Task-name state shows running indicator (active work)."""
+    session = Session(id="abcd1234-5678-uuid", stage="processing", created_at=1000, state="audit")
+    row = session_to_row(session)
+    assert row.status == STATUS_RUNNING
 
 
 # Tests for format_status_text
@@ -121,13 +127,6 @@ def test_format_status_text_error():
     text = format_status_text(STATUS_ERROR)
     assert str(text) == STATUS_ERROR
     assert text.style == "bright_red"
-
-
-def test_format_status_text_ready():
-    """format_status_text returns bright_cyan for ready."""
-    text = format_status_text(STATUS_READY)
-    assert str(text) == STATUS_READY
-    assert text.style == "bright_cyan"
 
 
 def test_format_status_text_new():
