@@ -441,6 +441,58 @@ def cmd_screenshot(args: list[str]) -> int:
     return 0
 
 
+@command("shovel", "Save a shovel-ready prompt for a session")
+def cmd_shovel(args: list[str]) -> int:
+    """Read a shovel-ready prompt from stdin and save it to the session directory."""
+    from hopper.client import set_session_state
+    from hopper.sessions import get_session_dir
+
+    parser = make_parser(
+        "shovel",
+        "Read a shovel-ready prompt from stdin and save it to the session directory. "
+        "Usage: hop shovel <<'EOF'\n<prompt>\nEOF",
+    )
+    try:
+        parse_args(parser, args)
+    except SystemExit:
+        return 0
+    except ArgumentError as e:
+        print(f"error: {e}")
+        parser.print_usage()
+        return 1
+
+    if err := require_server():
+        return err
+
+    session_id = get_hopper_sid()
+    if not session_id:
+        print("HOPPER_SID not set. Run this from within a hopper session.")
+        return 1
+
+    if err := validate_hopper_sid():
+        return err
+
+    # Read prompt from stdin
+    prompt = sys.stdin.read()
+    if not prompt.strip():
+        print("No input received. Pipe a shovel-ready prompt via stdin.")
+        return 1
+
+    # Write to session directory
+    session_dir = get_session_dir(session_id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    shovel_path = session_dir / "shovel.md"
+    tmp_path = shovel_path.with_suffix(".md.tmp")
+    tmp_path.write_text(prompt)
+    os.replace(tmp_path, shovel_path)
+
+    # Update session status
+    set_session_state(SOCKET_PATH, session_id, "idle", "Shovel complete")
+
+    print(f"Saved to {shovel_path}")
+    return 0
+
+
 @command("ping", "Check if server is running")
 def cmd_ping(args: list[str]) -> int:
     """Ping the server."""

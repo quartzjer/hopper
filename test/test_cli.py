@@ -10,6 +10,7 @@ from hopper.cli import (
     cmd_ore,
     cmd_ping,
     cmd_screenshot,
+    cmd_shovel,
     cmd_status,
     cmd_up,
     get_hopper_sid,
@@ -774,3 +775,95 @@ def test_screenshot_success(capsys):
     assert result == 0
     captured = capsys.readouterr()
     assert captured.out == ansi_content
+
+
+# Tests for shovel command
+
+
+def test_shovel_help(capsys):
+    """shovel --help shows help and returns 0."""
+    result = cmd_shovel(["--help"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "usage: hop shovel" in captured.out
+
+
+def test_shovel_no_server(capsys):
+    """shovel returns 1 when server not running."""
+    with patch("hopper.client.ping", return_value=False):
+        result = cmd_shovel([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Server not running" in captured.out
+
+
+def test_shovel_no_hopper_sid(capsys):
+    """shovel returns 1 when HOPPER_SID not set."""
+    env = os.environ.copy()
+    env.pop("HOPPER_SID", None)
+    with patch.dict(os.environ, env, clear=True):
+        with patch("hopper.client.ping", return_value=True):
+            result = cmd_shovel([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "HOPPER_SID not set" in captured.out
+
+
+def test_shovel_invalid_session(capsys):
+    """shovel returns 1 when session doesn't exist."""
+    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.session_exists", return_value=False):
+                result = cmd_shovel([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "bad-session" in captured.out
+    assert "not found or archived" in captured.out
+
+
+def test_shovel_empty_stdin(capsys):
+    """shovel returns 1 on empty stdin."""
+    from io import StringIO
+
+    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.session_exists", return_value=True):
+                with patch("sys.stdin", StringIO("")):
+                    result = cmd_shovel([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "No input received" in captured.out
+
+
+def test_shovel_saves_file(tmp_path, monkeypatch, capsys):
+    """shovel saves prompt to session directory and updates state."""
+    from io import StringIO
+
+    session_id = "test-session-1234"
+    session_dir = tmp_path / session_id
+    prompt_text = "# Shovel-ready prompt\n\nDo the thing.\n"
+
+    monkeypatch.setattr("hopper.sessions.SESSIONS_DIR", tmp_path)
+
+    with patch.dict(os.environ, {"HOPPER_SID": session_id}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.session_exists", return_value=True):
+                with patch("hopper.client.set_session_state", return_value=True) as mock_set:
+                    with patch("sys.stdin", StringIO(prompt_text)):
+                        result = cmd_shovel([])
+
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "Saved to" in captured.out
+
+    # Verify file was written
+    shovel_path = session_dir / "shovel.md"
+    assert shovel_path.exists()
+    assert shovel_path.read_text() == prompt_text
+
+    # Verify state was updated: set_session_state(socket_path, session_id, state, status)
+    mock_set.assert_called_once()
+    _, sid, state, status = mock_set.call_args[0]
+    assert sid == session_id
+    assert state == "idle"
+    assert "complete" in status.lower()
