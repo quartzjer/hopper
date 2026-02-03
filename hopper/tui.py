@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -250,6 +251,10 @@ class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
     #scope-buttons Button {
         margin: 0 1;
     }
+
+    #scope-buttons Button:focus {
+        text-style: bold reverse;
+    }
     """
 
     def compose(self) -> ComposeResult:
@@ -263,6 +268,40 @@ class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
 
     def on_mount(self) -> None:
         self.query_one("#scope-input", TextArea).focus()
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.focused
+        buttons = list(self.query("#scope-buttons Button"))
+        text_area = self.query_one("#scope-input", TextArea)
+
+        if event.key == "tab" and focused is text_area:
+            event.prevent_default()
+            event.stop()
+            buttons[0].focus()
+        elif event.key == "shift+tab" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            if idx == 0:
+                text_area.focus()
+            else:
+                buttons[idx - 1].focus()
+        elif event.key == "tab" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            if idx < len(buttons) - 1:
+                buttons[idx + 1].focus()
+        elif event.key == "right" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx + 1) % len(buttons)].focus()
+        elif event.key == "left" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx - 1) % len(buttons)].focus()
 
     def action_cancel(self) -> None:
         self.dismiss(None)

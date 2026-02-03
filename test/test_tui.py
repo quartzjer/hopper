@@ -546,6 +546,83 @@ async def test_scope_input_empty_validation():
         assert app.scope_result == "not_set"
 
 
+@pytest.mark.asyncio
+async def test_scope_input_arrow_keys_navigate_buttons():
+    """Left/right arrows should cycle focus between buttons."""
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Tab from TextArea to first button (Cancel)
+        await pilot.press("tab")
+        assert app.screen.focused.id == "btn-cancel"
+        # Right arrow to Background
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-background"
+        # Right arrow to Foreground
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-foreground"
+        # Right arrow wraps to Cancel
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-cancel"
+        # Left arrow wraps to Foreground
+        await pilot.press("left")
+        assert app.screen.focused.id == "btn-foreground"
+        # Left arrow to Background
+        await pilot.press("left")
+        assert app.screen.focused.id == "btn-background"
+
+
+@pytest.mark.asyncio
+async def test_scope_input_shift_tab_returns_to_textarea():
+    """Shift+Tab from first button should return focus to TextArea."""
+    from textual.widgets import TextArea
+
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Tab to first button
+        await pilot.press("tab")
+        assert app.screen.focused.id == "btn-cancel"
+        # Shift+Tab back to TextArea
+        await pilot.press("shift+tab")
+        assert isinstance(app.screen.focused, TextArea)
+
+
+@pytest.mark.asyncio
+async def test_scope_input_shift_tab_between_buttons():
+    """Shift+Tab should move backwards through buttons."""
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Tab to Foreground (third button)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Background
+        await pilot.press("tab")  # Foreground
+        assert app.screen.focused.id == "btn-foreground"
+        # Shift+Tab back to Background
+        await pilot.press("shift+tab")
+        assert app.screen.focused.id == "btn-background"
+        # Shift+Tab back to Cancel
+        await pilot.press("shift+tab")
+        assert app.screen.focused.id == "btn-cancel"
+
+
+@pytest.mark.asyncio
+async def test_scope_input_arrow_key_select():
+    """Arrow to a button then Enter should activate it."""
+    from textual.widgets import TextArea
+
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        text_area = screen.query_one("#scope-input", TextArea)
+        text_area.insert("Arrow test")
+        # Tab to Cancel, then right twice to Foreground
+        await pilot.press("tab")
+        await pilot.press("right")
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-foreground"
+        await pilot.press("enter")
+        assert app.scope_result == ("Arrow test", True)
+
+
 # Tests for BacklogTable
 
 
