@@ -18,7 +18,7 @@ def spawn_claude(
         stage: Session stage ("ore" or "processing") to determine which runner to use.
 
     Returns:
-        The tmux window ID on success, None on failure.
+        The tmux pane ID on success, None on failure.
     """
     # Select runner based on stage
     hop_cmd = "hop refine" if stage == "processing" else "hop ore"
@@ -27,13 +27,13 @@ def spawn_claude(
     return new_window(command, cwd=project_path, background=not foreground)
 
 
-def switch_to_window(window_id: str) -> bool:
-    """Switch to an existing tmux window.
+def switch_to_pane(pane_id: str) -> bool:
+    """Switch to the tmux window containing the given pane.
 
     Args:
-        window_id: The tmux window ID to switch to.
+        pane_id: The tmux pane ID to switch to (e.g., "%1").
 
     Returns:
-        True if successfully switched, False otherwise (window doesn't exist or other error).
+        True if successfully switched, False otherwise.
     """
-    return select_window(window_id)
+    return select_window(pane_id)

@@ -121,7 +121,7 @@ class Session:
     state: str = "new"  # Freeform: "new", "running", "stuck", "error", task names, etc.
     status: str = ""  # Human-readable status text
     active: bool = False  # Whether a hop ore client is connected
-    tmux_window: str | None = None  # tmux window ID (e.g., "@1")
+    tmux_pane: str | None = None  # tmux pane ID (e.g., "%1")
 
     @property
     def short_id(self) -> str:
@@ -148,7 +148,7 @@ class Session:
             "state": self.state,
             "status": self.status,
             "active": self.active,
-            "tmux_window": self.tmux_window,
+            "tmux_pane": self.tmux_pane,
         }
 
     @classmethod
@@ -163,7 +163,7 @@ class Session:
             state=data["state"],
             status=data.get("status", ""),
             active=data.get("active", False),  # Backwards compat
-            tmux_window=data.get("tmux_window"),  # Backwards compat
+            tmux_pane=data.get("tmux_pane") or data.get("tmux_window"),  # Backwards compat
         )
 
 

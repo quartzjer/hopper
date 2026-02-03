@@ -436,9 +436,9 @@ def cmd_screenshot(args: list[str]) -> int:
         print("Server was not started inside tmux.")
         return 1
 
-    content = capture_pane(tmux["window"])
+    content = capture_pane(tmux["pane"])
     if content is None:
-        print(f"Failed to capture tmux window {tmux['window']}.")
+        print(f"Failed to capture tmux pane {tmux['pane']}.")
         return 1
 
     print(content, end="")
@@ -690,7 +690,7 @@ def cmd_ping(args: list[str]) -> int:
     parts = ["pong"]
     tmux = response.get("tmux")
     if tmux:
-        parts.append(f"tmux:{tmux['session']}:{tmux['window']}")
+        parts.append(f"tmux:{tmux['session']}:{tmux['pane']}")
     if session_id:
         parts.append(f"session:{session_id}")
     print(" ".join(parts))

@@ -14,7 +14,7 @@ from textual.widgets import Button, DataTable, Footer, Header, OptionList, Stati
 from textual.widgets.option_list import Option
 
 from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item
-from hopper.claude import spawn_claude, switch_to_window
+from hopper.claude import spawn_claude, switch_to_pane
 from hopper.projects import Project, find_project, get_active_projects
 from hopper.sessions import (
     Session,
@@ -813,9 +813,9 @@ class HopperApp(App):
                     return  # Cancelled
                 scope, foreground = result
                 session = create_session(self._sessions, project.name, scope)
-                window_id = spawn_claude(session.id, project.path, foreground)
-                if window_id:
-                    session.tmux_window = window_id
+                pane_id = spawn_claude(session.id, project.path, foreground)
+                if pane_id:
+                    session.tmux_pane = pane_id
                     save_sessions(self._sessions)
                 self.refresh_table()
 
@@ -870,15 +870,15 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        if session.active and session.tmux_window:
-            # Session has a connected hop ore - switch to existing window
-            if not switch_to_window(session.tmux_window):
+        if session.active and session.tmux_pane:
+            # Session has a connected runner - switch to its window
+            if not switch_to_pane(session.tmux_pane):
                 self.notify("Failed to switch to window", severity="error")
         else:
             # Session is not active - spawn runner based on stage
-            window_id = spawn_claude(session.id, project_path, stage=session.stage)
-            if window_id:
-                session.tmux_window = window_id
+            pane_id = spawn_claude(session.id, project_path, stage=session.stage)
+            if pane_id:
+                session.tmux_pane = pane_id
                 save_sessions(self._sessions)
             else:
                 self.notify("Failed to spawn tmux window", severity="error")

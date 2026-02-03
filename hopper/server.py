@@ -57,7 +57,7 @@ class Server:
     race conditions when multiple client handler threads send concurrently.
 
     Tracks which clients own which sessions. Sets active=False and clears
-    tmux_window on disconnect; state/status are client-driven.
+    tmux_pane on disconnect; state/status are client-driven.
     """
 
     def __init__(self, socket_path: Path, tmux_location: dict | None = None):
@@ -86,9 +86,9 @@ class Server:
         # Clear stale active flags from previous run (no clients connected yet)
         stale = False
         for session in self.sessions:
-            if session.active or session.tmux_window:
+            if session.active or session.tmux_pane:
                 session.active = False
-                session.tmux_window = None
+                session.tmux_pane = None
                 stale = True
         if stale:
             save_sessions(self.sessions)
@@ -166,7 +166,7 @@ class Server:
             logger.debug(f"Client disconnected ({len(self.clients)} remaining)")
 
     def _on_client_disconnect(self, conn: socket.socket) -> None:
-        """Handle client disconnect - set active=False and clear tmux_window."""
+        """Handle client disconnect - set active=False and clear tmux_pane."""
         with self.lock:
             session_id = self.client_sessions.pop(conn, None)
             if session_id:
@@ -180,7 +180,7 @@ class Server:
             return
 
         session.active = False
-        session.tmux_window = None
+        session.tmux_pane = None
         session.touch()
         save_sessions(self.sessions)
 

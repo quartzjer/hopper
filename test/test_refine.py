@@ -55,7 +55,7 @@ class TestRefineRunner:
             patch("hopper.refine.create_worktree", return_value=True) as mock_wt,
             patch("hopper.refine.prompt.load", return_value="loaded prompt") as mock_load,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -106,7 +106,7 @@ class TestRefineRunner:
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree") as mock_wt,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -225,7 +225,7 @@ class TestRefineRunner:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -261,7 +261,7 @@ class TestRefineRunner:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -289,7 +289,7 @@ class TestRefineRunner:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -324,7 +324,7 @@ class TestRefineRunner:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -355,7 +355,7 @@ class TestRefineRunner:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -396,7 +396,7 @@ class TestRunRefine:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = run_refine("test-id", Path("/tmp/test.sock"))
 
@@ -445,7 +445,7 @@ class TestRefineCompletion:
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="prompt"),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner._done.set()
             exit_code = runner.run()
@@ -498,7 +498,7 @@ class TestRefineCompletion:
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 

@@ -57,7 +57,7 @@ class TestBaseRunnerActivityMonitor:
     def test_check_activity_detects_stuck(self):
         """Monitor detects stuck state when pane content doesn't change."""
         runner = self._make_runner()
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
 
         emitted = []
         mock_conn = MagicMock()
@@ -79,7 +79,7 @@ class TestBaseRunnerActivityMonitor:
     def test_check_activity_detects_running(self):
         """Monitor detects running state when pane content changes."""
         runner = self._make_runner()
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
 
         emitted = []
         mock_conn = MagicMock()
@@ -98,7 +98,7 @@ class TestBaseRunnerActivityMonitor:
     def test_check_activity_recovers_from_stuck(self):
         """Monitor emits running when recovering from stuck state."""
         runner = self._make_runner()
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
 
         emitted = []
         mock_conn = MagicMock()
@@ -122,7 +122,7 @@ class TestBaseRunnerActivityMonitor:
     def test_check_activity_stops_on_capture_failure(self):
         """Monitor stops when pane capture fails."""
         runner = self._make_runner()
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
         runner._monitor_stop.clear()
 
         with patch("hopper.runner.capture_pane", return_value=None):
@@ -134,7 +134,7 @@ class TestBaseRunnerActivityMonitor:
         """Monitor doesn't start when not in tmux."""
         runner = self._make_runner()
 
-        with patch("hopper.runner.get_current_window_id", return_value=None):
+        with patch("hopper.runner.get_current_pane_id", return_value=None):
             runner._start_monitor()
 
         assert runner._monitor_thread is None
@@ -147,7 +147,7 @@ class TestBaseRunnerActivityMonitor:
     def test_check_activity_skips_when_done(self):
         """Monitor skips stuck detection once done event is set."""
         runner = self._make_runner()
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
         runner._last_snapshot = "Hello World"
         runner._done.set()
 
@@ -220,7 +220,7 @@ class TestBaseRunnerDismiss:
     def test_wait_and_dismiss_sends_ctrl_d(self):
         """Dismiss thread sends two Ctrl-D after screen stabilizes."""
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
         runner._done.set()
 
         send_keys_calls = []
@@ -236,12 +236,12 @@ class TestBaseRunnerDismiss:
         ):
             runner._wait_and_dismiss_claude()
 
-        assert send_keys_calls == [("@1", "C-d"), ("@1", "C-d")]
+        assert send_keys_calls == [("%1", "C-d"), ("%1", "C-d")]
 
     def test_wait_and_dismiss_aborts_when_monitor_stops(self):
         """Dismiss thread aborts if monitor stop is set."""
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
+        runner._pane_id = "%1"
         runner._monitor_stop.set()
 
         send_keys_calls = []
@@ -253,10 +253,10 @@ class TestBaseRunnerDismiss:
 
         assert send_keys_calls == []
 
-    def test_wait_and_dismiss_aborts_without_window(self):
-        """Dismiss thread aborts if no window ID."""
+    def test_wait_and_dismiss_aborts_without_pane(self):
+        """Dismiss thread aborts if no pane ID."""
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = None
+        runner._pane_id = None
         runner._done.set()
 
         send_keys_calls = []

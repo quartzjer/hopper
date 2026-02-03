@@ -38,7 +38,7 @@ def new_window(
     env: dict[str, str] | None = None,
     background: bool = False,
 ) -> str | None:
-    """Create a new tmux window and return its unique window ID.
+    """Create a new tmux window and return its pane ID.
 
     Args:
         command: The command to run in the new window.
@@ -47,9 +47,9 @@ def new_window(
         background: If True, don't switch to the new window.
 
     Returns:
-        The tmux window ID (e.g., "@1") on success, None on failure.
+        The tmux pane ID (e.g., "%1") on success, None on failure.
     """
-    cmd = ["tmux", "new-window", "-P", "-F", "#{window_id}"]
+    cmd = ["tmux", "new-window", "-P", "-F", "#{pane_id}"]
     if background:
         cmd.append("-d")
     if cwd:
@@ -70,11 +70,15 @@ def new_window(
         return None
 
 
-def select_window(window_id: str) -> bool:
-    """Switch to a tmux window by its unique ID."""
+def select_window(target: str) -> bool:
+    """Switch to the tmux window containing the given pane.
+
+    Args:
+        target: The tmux target (pane ID like "%1" or window ID like "@1").
+    """
     try:
         result = subprocess.run(
-            ["tmux", "select-window", "-t", window_id],
+            ["tmux", "select-window", "-t", target],
             capture_output=True,
             text=True,
         )
@@ -84,59 +88,53 @@ def select_window(window_id: str) -> bool:
 
 
 def get_current_tmux_location() -> dict | None:
-    """Get the current tmux session name and window ID.
+    """Get the current tmux session name and pane ID.
 
     Returns:
-        Dict with 'session' and 'window' keys, or None if not in tmux or on error.
+        Dict with 'session' and 'pane' keys, or None if not in tmux or on error.
     """
     if not is_inside_tmux():
         return None
 
+    pane_id = os.environ.get("TMUX_PANE")
+    if not pane_id:
+        return None
+
     try:
         result = subprocess.run(
-            ["tmux", "display-message", "-p", "#{session_name}\n#{window_id}"],
+            ["tmux", "display-message", "-t", pane_id, "-p", "#{session_name}"],
             capture_output=True,
             text=True,
         )
         if result.returncode != 0:
             return None
 
-        lines = result.stdout.strip().split("\n")
-        if len(lines) != 2:
+        session_name = result.stdout.strip()
+        if not session_name:
             return None
 
-        return {"session": lines[0], "window": lines[1]}
+        return {"session": session_name, "pane": pane_id}
     except FileNotFoundError:
         return None
 
 
-def get_current_window_id() -> str | None:
-    """Get the current tmux window ID.
+def get_current_pane_id() -> str | None:
+    """Get the pane ID of the current process from the TMUX_PANE environment variable.
+
+    This is the reliable way for a process to identify which tmux pane it is
+    running in, regardless of which window is currently focused.
 
     Returns:
-        The window ID (e.g., "@1"), or None if not in tmux or on error.
+        The pane ID (e.g., "%1"), or None if not in tmux.
     """
-    if not is_inside_tmux():
-        return None
-
-    try:
-        result = subprocess.run(
-            ["tmux", "display-message", "-p", "#{window_id}"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return None
-        return result.stdout.strip() or None
-    except FileNotFoundError:
-        return None
+    return os.environ.get("TMUX_PANE") or None
 
 
-def send_keys(window_id: str, keys: str) -> bool:
+def send_keys(target: str, keys: str) -> bool:
     """Send keys to a tmux pane.
 
     Args:
-        window_id: The tmux window ID to target (e.g., "@1").
+        target: The tmux target (pane ID like "%1" or window ID like "@1").
         keys: The keys to send (e.g., "C-d" for Ctrl-D).
 
     Returns:
@@ -144,7 +142,7 @@ def send_keys(window_id: str, keys: str) -> bool:
     """
     try:
         result = subprocess.run(
-            ["tmux", "send-keys", "-t", window_id, keys],
+            ["tmux", "send-keys", "-t", target, keys],
             capture_output=True,
             text=True,
         )
@@ -153,18 +151,18 @@ def send_keys(window_id: str, keys: str) -> bool:
         return False
 
 
-def capture_pane(window_id: str) -> str | None:
+def capture_pane(target: str) -> str | None:
     """Capture the contents of a tmux pane with ANSI escape sequences.
 
     Args:
-        window_id: The tmux window ID to capture (e.g., "@1").
+        target: The tmux target (pane ID like "%1" or window ID like "@1").
 
     Returns:
         The pane contents with ANSI styling, or None on failure.
     """
     try:
         result = subprocess.run(
-            ["tmux", "capture-pane", "-e", "-p", "-t", window_id],
+            ["tmux", "capture-pane", "-e", "-p", "-t", target],
             capture_output=True,
             text=True,
         )

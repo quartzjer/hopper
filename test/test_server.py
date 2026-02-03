@@ -178,7 +178,7 @@ def test_server_handles_connect(socket_path, server):
 
 def test_server_handles_connect_with_tmux_location(socket_path, temp_config):
     """Server includes tmux location in connect response."""
-    tmux_location = {"session": "main", "window": "@0"}
+    tmux_location = {"session": "main", "pane": "%0"}
     srv = Server(socket_path, tmux_location=tmux_location)
     thread = threading.Thread(target=srv.start, daemon=True)
     thread.start()
@@ -205,7 +205,7 @@ def test_server_handles_connect_with_tmux_location(socket_path, temp_config):
         response = json.loads(data.strip().split("\n")[0])
 
         assert response["type"] == "connected"
-        assert response["tmux"] == {"session": "main", "window": "@0"}
+        assert response["tmux"] == {"session": "main", "pane": "%0"}
 
         client.close()
     finally:
@@ -357,11 +357,11 @@ def test_server_registers_on_session_register(socket_path, server, temp_config):
 
 
 def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config):
-    """Server sets active=False and clears tmux_window on client disconnect."""
+    """Server sets active=False and clears tmux_pane on client disconnect."""
     from hopper.sessions import Session, save_sessions
 
     # Create a test session in running state with tmux window
-    session = Session(id="test-id", stage="ore", created_at=1000, state="running", tmux_window="@1")
+    session = Session(id="test-id", stage="ore", created_at=1000, state="running", tmux_pane="%1")
     server.sessions = [session]
     save_sessions(server.sessions)
 
@@ -390,9 +390,9 @@ def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config
             break
         time.sleep(0.1)
 
-    # active=False, tmux_window cleared, but state/status untouched
+    # active=False, tmux_pane cleared, but state/status untouched
     assert server.sessions[0].active is False
-    assert server.sessions[0].tmux_window is None
+    assert server.sessions[0].tmux_pane is None
     assert server.sessions[0].state == "running"
     assert "test-id" not in server.session_clients
 
@@ -408,7 +408,7 @@ def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
         created_at=1000,
         state="error",
         status="Something failed",
-        tmux_window="@1",
+        tmux_pane="%1",
     )
     server.sessions = [session]
     save_sessions(server.sessions)
@@ -432,7 +432,7 @@ def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
 
     # Wait for disconnect handling
     for _ in range(50):
-        if server.sessions[0].tmux_window is None:
+        if server.sessions[0].tmux_pane is None:
             break
         time.sleep(0.1)
 
@@ -440,7 +440,7 @@ def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
     assert server.sessions[0].state == "error"
     assert server.sessions[0].status == "Something failed"
     assert server.sessions[0].active is False
-    assert server.sessions[0].tmux_window is None
+    assert server.sessions[0].tmux_pane is None
 
 
 def test_server_handles_ready_state(socket_path, server, temp_config):

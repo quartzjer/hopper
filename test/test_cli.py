@@ -719,7 +719,7 @@ def test_screenshot_no_tmux_location(capsys):
 
 def test_screenshot_capture_fails(capsys):
     """screenshot returns 1 when capture_pane fails."""
-    mock_response = {"type": "connected", "tmux": {"session": "main", "window": "@0"}}
+    mock_response = {"type": "connected", "tmux": {"session": "main", "pane": "%0"}}
     with patch("hopper.client.ping", return_value=True):
         with patch("hopper.client.connect", return_value=mock_response):
             with patch("hopper.tmux.capture_pane", return_value=None):
@@ -731,7 +731,7 @@ def test_screenshot_capture_fails(capsys):
 
 def test_screenshot_success(capsys):
     """screenshot prints captured content on success."""
-    mock_response = {"type": "connected", "tmux": {"session": "main", "window": "@0"}}
+    mock_response = {"type": "connected", "tmux": {"session": "main", "pane": "%0"}}
     ansi_content = "\x1b[32mGreen text\x1b[0m\nMore lines\n"
     with patch("hopper.client.ping", return_value=True):
         with patch("hopper.client.connect", return_value=mock_response):

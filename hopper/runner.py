@@ -11,7 +11,7 @@ from pathlib import Path
 from hopper.client import HopperConnection, connect
 from hopper.projects import find_project
 from hopper.sessions import SHORT_ID_LEN, current_time_ms
-from hopper.tmux import capture_pane, get_current_window_id, send_keys
+from hopper.tmux import capture_pane, get_current_pane_id, send_keys
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class BaseRunner:
         self._monitor_stop = threading.Event()
         self._last_snapshot: str | None = None
         self._stuck_since: int | None = None
-        self._window_id: str | None = None
+        self._pane_id: str | None = None
         # Completion tracking
         self._done = threading.Event()
 
@@ -177,7 +177,7 @@ class BaseRunner:
 
             # Start dismiss thread if configured
             should_dismiss = self._always_dismiss or self.is_first_run
-            if should_dismiss and self._window_id:
+            if should_dismiss and self._pane_id:
                 threading.Thread(
                     target=self._wait_and_dismiss_claude,
                     name=f"{self._done_label.lower().replace(' ', '-')}-dismiss",
@@ -243,7 +243,7 @@ class BaseRunner:
             if self._monitor_stop.is_set():
                 return
 
-        if not self._window_id:
+        if not self._pane_id:
             return
 
         logger.debug(f"{self._done_label}, waiting for screen to stabilize")
@@ -251,7 +251,7 @@ class BaseRunner:
         last_snapshot = None
         while not self._monitor_stop.is_set():
             self._monitor_stop.wait(MONITOR_INTERVAL)
-            snapshot = capture_pane(self._window_id)
+            snapshot = capture_pane(self._pane_id)
             if snapshot is None:
                 return
             if snapshot == last_snapshot:
@@ -262,13 +262,13 @@ class BaseRunner:
             return
 
         logger.debug("Screen stable, sending Ctrl-D")
-        send_keys(self._window_id, "C-d")
-        send_keys(self._window_id, "C-d")
+        send_keys(self._pane_id, "C-d")
+        send_keys(self._pane_id, "C-d")
 
     def _start_monitor(self) -> None:
         """Start the activity monitor thread."""
-        self._window_id = get_current_window_id()
-        if not self._window_id:
+        self._pane_id = get_current_pane_id()
+        if not self._pane_id:
             logger.debug("Not in tmux, skipping activity monitor")
             return
 
@@ -277,7 +277,7 @@ class BaseRunner:
             target=self._monitor_loop, name="activity-monitor", daemon=True
         )
         self._monitor_thread.start()
-        logger.debug(f"Started activity monitor for window {self._window_id}")
+        logger.debug(f"Started activity monitor for pane {self._pane_id}")
 
     def _stop_monitor(self) -> None:
         """Stop the activity monitor thread."""
@@ -293,14 +293,14 @@ class BaseRunner:
 
     def _check_activity(self) -> None:
         """Check tmux pane for activity and update state accordingly."""
-        if not self._window_id:
+        if not self._pane_id:
             return
 
         # Skip stuck detection once done — dismiss thread handles exit
         if self._done.is_set():
             return
 
-        snapshot = capture_pane(self._window_id)
+        snapshot = capture_pane(self._pane_id)
         if snapshot is None:
             logger.debug("Failed to capture pane, stopping monitor")
             self._monitor_stop.set()

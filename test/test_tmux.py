@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from hopper.tmux import (
     capture_pane,
+    get_current_pane_id,
     get_current_tmux_location,
     get_tmux_sessions,
     is_inside_tmux,
@@ -56,16 +57,33 @@ class TestGetTmuxSessions:
             assert get_tmux_sessions() == []
 
 
+class TestGetCurrentPaneId:
+    def test_returns_pane_id_when_set(self):
+        with patch.dict("os.environ", {"TMUX_PANE": "%5"}):
+            assert get_current_pane_id() == "%5"
+
+    def test_returns_none_when_not_set(self):
+        with patch.dict("os.environ", {}, clear=True):
+            assert get_current_pane_id() is None
+
+    def test_returns_none_when_empty(self):
+        with patch.dict("os.environ", {"TMUX_PANE": ""}):
+            assert get_current_pane_id() is None
+
+
 class TestGetCurrentTmuxLocation:
     def test_returns_location_when_inside_tmux(self):
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,12345,0"}):
+        with patch.dict(
+            "os.environ",
+            {"TMUX": "/tmp/tmux-1000/default,12345,0", "TMUX_PANE": "%5"},
+        ):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value.returncode = 0
-                mock_run.return_value.stdout = "main\n@0\n"
+                mock_run.return_value.stdout = "main\n"
                 result = get_current_tmux_location()
-                assert result == {"session": "main", "window": "@0"}
+                assert result == {"session": "main", "pane": "%5"}
                 mock_run.assert_called_once_with(
-                    ["tmux", "display-message", "-p", "#{session_name}\n#{window_id}"],
+                    ["tmux", "display-message", "-t", "%5", "-p", "#{session_name}"],
                     capture_output=True,
                     text=True,
                 )
@@ -75,8 +93,16 @@ class TestGetCurrentTmuxLocation:
             result = get_current_tmux_location()
             assert result is None
 
+    def test_returns_none_when_no_tmux_pane(self):
+        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,12345,0"}, clear=True):
+            result = get_current_tmux_location()
+            assert result is None
+
     def test_returns_none_when_command_fails(self):
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,12345,0"}):
+        with patch.dict(
+            "os.environ",
+            {"TMUX": "/tmp/tmux-1000/default,12345,0", "TMUX_PANE": "%5"},
+        ):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value.returncode = 1
                 mock_run.return_value.stdout = ""
@@ -84,16 +110,11 @@ class TestGetCurrentTmuxLocation:
                 assert result is None
 
     def test_returns_none_when_tmux_not_installed(self):
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,12345,0"}):
+        with patch.dict(
+            "os.environ",
+            {"TMUX": "/tmp/tmux-1000/default,12345,0", "TMUX_PANE": "%5"},
+        ):
             with patch("subprocess.run", side_effect=FileNotFoundError):
-                result = get_current_tmux_location()
-                assert result is None
-
-    def test_returns_none_when_output_malformed(self):
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,12345,0"}):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value.returncode = 0
-                mock_run.return_value.stdout = "only-one-line\n"
                 result = get_current_tmux_location()
                 assert result is None
 

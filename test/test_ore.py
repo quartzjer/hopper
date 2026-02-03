@@ -32,7 +32,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -80,7 +80,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -116,7 +116,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -151,7 +151,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -186,7 +186,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -246,7 +246,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -280,7 +280,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -318,7 +318,7 @@ class TestOreRunner:
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -374,7 +374,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
@@ -405,7 +405,7 @@ class TestOreRunner:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
             patch("hopper.ore.prompt.load", return_value="prompt") as mock_load,
         ):
             runner.run()
@@ -437,7 +437,7 @@ class TestRunOre:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = run_ore("test-id", Path("/tmp/test.sock"))
 
@@ -472,7 +472,7 @@ class TestShovelWorkflow:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             # Simulate shovel completing before proc.wait returns
             runner._done.set()
@@ -517,7 +517,7 @@ class TestShovelWorkflow:
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
