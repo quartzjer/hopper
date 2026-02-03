@@ -62,7 +62,7 @@ class Row:
 
     id: str
     short_id: str
-    stage: str  # "o" for ore, "p" for processing
+    stage: str  # STAGE_ORE or STAGE_PROCESSING
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_IDLE, STATUS_ERROR
     project: str = ""  # Project name
@@ -271,7 +271,7 @@ class SessionTable(DataTable):
     COL_ID = "id"
     COL_PROJECT = "project"
     COL_AGE = "age"
-    COL_MESSAGE = "message"
+    COL_STATUS_TEXT = "status_text"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -280,11 +280,11 @@ class SessionTable(DataTable):
     def on_mount(self) -> None:
         """Set up columns when mounted with explicit keys."""
         self.add_column("", key=self.COL_STATUS)
-        self.add_column("S", key=self.COL_STAGE)
-        self.add_column("ID", key=self.COL_ID)
-        self.add_column("PROJECT", key=self.COL_PROJECT)
-        self.add_column("AGE", key=self.COL_AGE)
-        self.add_column("MESSAGE", key=self.COL_MESSAGE)
+        self.add_column("s", key=self.COL_STAGE)
+        self.add_column("id", key=self.COL_ID)
+        self.add_column("project", key=self.COL_PROJECT)
+        self.add_column("last", key=self.COL_AGE)
+        self.add_column("status", key=self.COL_STATUS_TEXT)
 
 
 class HopperApp(App):
@@ -425,7 +425,7 @@ class HopperApp(App):
                 table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, SessionTable.COL_AGE, row.age)
                 table.update_cell(
-                    row.id, SessionTable.COL_MESSAGE, self._format_message(row.status_text)
+                    row.id, SessionTable.COL_STATUS_TEXT, self._format_status(row.status_text)
                 )
             else:
                 # Add new row
@@ -435,7 +435,7 @@ class HopperApp(App):
                     row.short_id,
                     row.project,
                     row.age,
-                    self._format_message(row.status_text),
+                    self._format_status(row.status_text),
                     key=row.id,
                 )
 
@@ -447,9 +447,9 @@ class HopperApp(App):
             empty_msg.display = True
             table.display = False
 
-    def _format_message(self, message: str) -> str:
-        """Format message for display, replacing newlines with spaces."""
-        return message.replace("\n", " ") if message else ""
+    def _format_status(self, status: str) -> str:
+        """Format status text for display, replacing newlines with spaces."""
+        return status.replace("\n", " ") if status else ""
 
     def _get_selected_session_id(self) -> str | None:
         """Get the session ID of the selected row."""
@@ -521,8 +521,8 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        # Session state is authoritative: running means hop ore is connected and window exists
-        if session.state == "running" and session.tmux_window:
+        # Session state is authoritative: running/stuck means hop ore is connected and window exists
+        if session.state in ("running", "stuck") and session.tmux_window:
             # Session is active - switch to existing window
             if not switch_to_window(session.tmux_window):
                 # This shouldn't happen if state tracking is correct, but handle it

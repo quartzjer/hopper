@@ -249,7 +249,7 @@ class Server:
         elif msg_type == "session_set_state":
             session_id = message.get("session_id")
             state = message.get("state")
-            status = message.get("status") or message.get("message", "")  # Backwards compat
+            status = message.get("status", "")
             if session_id and state in ("new", "idle", "running", "stuck", "error"):
                 session = update_session_state(self.sessions, session_id, state, status)
                 if session:
@@ -257,7 +257,7 @@ class Server:
 
         elif msg_type == "session_set_status":
             session_id = message.get("session_id")
-            status = message.get("status") or message.get("message", "")  # Backwards compat
+            status = message.get("status", "")
             if session_id:
                 session = update_session_status(self.sessions, session_id, status)
                 if session:

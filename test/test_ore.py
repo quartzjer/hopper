@@ -474,7 +474,12 @@ class TestActivityMonitor:
             runner._check_activity()
 
         assert runner._stuck_since is not None
-        assert any(e[0] == "session_set_state" and e[1]["state"] == "stuck" for e in emitted)
+        stuck_emissions = [
+            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "stuck"
+        ]
+        assert len(stuck_emissions) == 1
+        # First stuck should report MONITOR_INTERVAL seconds, not 0
+        assert "5s" in stuck_emissions[0][1]["status"]
 
     def test_check_activity_detects_running(self):
         """Monitor detects running state when pane content changes."""

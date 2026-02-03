@@ -11,6 +11,7 @@ from hopper.tui import (
     STATUS_ERROR,
     STATUS_IDLE,
     STATUS_RUNNING,
+    STATUS_STUCK,
     HopperApp,
     ProjectPickerScreen,
     Row,
@@ -41,6 +42,15 @@ def test_session_to_row_running():
     assert row.stage == STAGE_ORE
 
 
+def test_session_to_row_stuck():
+    """Stuck session has stuck status indicator."""
+    session = Session(id="abcd1234-5678-uuid", stage="ore", created_at=1000, state="stuck")
+    row = session_to_row(session)
+    assert row.short_id == "abcd1234"
+    assert row.status == STATUS_STUCK
+    assert row.stage == STAGE_ORE
+
+
 def test_session_to_row_error():
     """Error session has error status indicator."""
     session = Session(id="abcd1234-5678-uuid", stage="ore", created_at=1000, state="error")
@@ -65,6 +75,13 @@ def test_format_status_text_running():
     text = format_status_text(STATUS_RUNNING)
     assert str(text) == STATUS_RUNNING
     assert text.style == "bright_green"
+
+
+def test_format_status_text_stuck():
+    """format_status_text returns bright_yellow for stuck."""
+    text = format_status_text(STATUS_STUCK)
+    assert str(text) == STATUS_STUCK
+    assert text.style == "bright_yellow"
 
 
 def test_format_status_text_error():

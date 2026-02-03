@@ -164,7 +164,7 @@ class Session:
             scope=data.get("scope", ""),  # Backwards compat
             updated_at=data["updated_at"],
             state=data["state"],
-            status=data.get("status") or data.get("message", ""),  # Backwards compat
+            status=data.get("status", ""),
             tmux_window=data.get("tmux_window"),  # Backwards compat
         )
 

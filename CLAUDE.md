@@ -8,7 +8,7 @@ Hopper manages multiple Claude Code sessions through a terminal interface. It ru
 
 ## Key Concepts
 
-- **Session** - A Claude Code instance with unique ID, workflow stage, state (idle/running/error), and associated tmux window
+- **Session** - A Claude Code instance with unique ID, workflow stage, state (new/idle/running/stuck/error), and associated tmux window
 - **Stage** - Workflow position: "ore" (new/unprocessed) or "processing" (in progress)
 - **Server** - Background Unix socket server (JSONL protocol) that owns session state and broadcasts changes to clients
 - **TUI** - Terminal interface built with `Textual` for viewing and managing sessions

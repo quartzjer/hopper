@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 ERROR_LINES = 5  # Number of stderr lines to capture on error
 MONITOR_INTERVAL = 5.0  # Seconds between activity checks
+MONITOR_INTERVAL_MS = int(MONITOR_INTERVAL * 1000)
 
 
 def _extract_error_message(stderr_bytes: bytes) -> str | None:
@@ -178,7 +179,7 @@ class OreRunner:
             # No change - mark as stuck
             now = current_time_ms()
             if self._stuck_since is None:
-                self._stuck_since = now
+                self._stuck_since = now - MONITOR_INTERVAL_MS
             duration_sec = (now - self._stuck_since) // 1000
             self._emit_state("stuck", f"No output for {duration_sec}s")
         else:
