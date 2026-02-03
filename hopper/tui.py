@@ -648,8 +648,8 @@ class HopperApp(App):
             if not switch_to_window(session.tmux_window):
                 self.notify("Failed to switch to window", severity="error")
         else:
-            # Session is not active - spawn new hop ore instance
-            window_id = spawn_claude(session.id, project_path)
+            # Session is not active - spawn runner based on stage
+            window_id = spawn_claude(session.id, project_path, stage=session.stage)
             if window_id:
                 session.tmux_window = window_id
                 save_sessions(self._sessions)
