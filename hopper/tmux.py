@@ -1,7 +1,10 @@
 """tmux interaction utilities."""
 
+import logging
 import os
 import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 def is_inside_tmux() -> bool:
@@ -30,7 +33,10 @@ def get_tmux_sessions() -> list[str]:
 
 
 def new_window(
-    command: str, cwd: str | None = None, env: dict[str, str] | None = None
+    command: str,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    background: bool = False,
 ) -> str | None:
     """Create a new tmux window and return its unique window ID.
 
@@ -38,11 +44,14 @@ def new_window(
         command: The command to run in the new window.
         cwd: Working directory for the new window.
         env: Environment variables to set in the new window.
+        background: If True, don't switch to the new window.
 
     Returns:
         The tmux window ID (e.g., "@1") on success, None on failure.
     """
     cmd = ["tmux", "new-window", "-P", "-F", "#{window_id}"]
+    if background:
+        cmd.append("-d")
     if cwd:
         cmd.extend(["-c", cwd])
     if env:
@@ -53,9 +62,11 @@ def new_window(
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
+            logger.error(f"tmux new-window failed: {result.stderr.strip()}")
             return None
         return result.stdout.strip()
     except FileNotFoundError:
+        logger.error("tmux command not found")
         return None
 
 

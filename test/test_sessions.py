@@ -87,6 +87,20 @@ def test_create_session(temp_config):
     assert loaded[0].project == "test-project"
 
 
+def test_create_session_with_scope(temp_config):
+    """Test session creation with scope parameter."""
+    sessions_list = []
+    session = create_session(sessions_list, "test-project", "Fix the login bug")
+
+    assert session.scope == "Fix the login bug"
+    assert session.project == "test-project"
+
+    # Verify persisted to file
+    loaded = load_sessions()
+    assert len(loaded) == 1
+    assert loaded[0].scope == "Fix the login bug"
+
+
 def test_update_session_stage(temp_config):
     """Test updating session stage."""
     sessions_list = [Session(id="test-id", stage="ore", created_at=1000)]

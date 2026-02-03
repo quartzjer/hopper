@@ -48,6 +48,7 @@ class OreRunner:
         self.is_new_session = False  # Set during run() based on server state
         self.project_name: str = ""  # Project name for prompt context
         self.project_dir: str = ""  # Project directory for prompt context
+        self.scope: str = ""  # User's task scope description
 
     def run(self) -> int:
         """Run Claude for this session. Returns exit code."""
@@ -71,6 +72,9 @@ class OreRunner:
                         project = find_project(project_name)
                         if project:
                             self.project_dir = project.path
+
+                    # Get scope for prompt context
+                    self.scope = session_data.get("scope", "")
 
             # Start persistent connection for state updates
             self.connection = HopperConnection(self.socket_path)
@@ -134,12 +138,14 @@ class OreRunner:
 
         # Build command - use --resume for existing sessions, prompt for new
         if self.is_new_session:
-            # Pass project info as template context
+            # Pass project and scope info as template context
             context = {}
             if self.project_name:
                 context["project"] = self.project_name
             if self.project_dir:
                 context["dir"] = self.project_dir
+            if self.scope:
+                context["scope"] = self.scope
             initial_prompt = prompt.load("shovel", context=context if context else None)
             cmd = ["claude", "--session-id", self.session_id, initial_prompt]
         else:

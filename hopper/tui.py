@@ -6,10 +6,10 @@ from pathlib import Path
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import Theme
-from textual.widgets import DataTable, Footer, Header, OptionList, Static
+from textual.widgets import Button, DataTable, Footer, Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from hopper.claude import spawn_claude, switch_to_window
@@ -183,6 +183,78 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
 
     def action_cursor_up(self) -> None:
         self.query_one("#project-list", OptionList).action_cursor_up()
+
+
+class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
+    """Modal screen for entering task scope and spawn mode."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ScopeInputScreen {
+        align: center middle;
+    }
+
+    #scope-container {
+        width: 70;
+        height: auto;
+        max-height: 80%;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+
+    #scope-title {
+        text-align: center;
+        text-style: bold;
+        color: $text;
+        padding-bottom: 1;
+    }
+
+    #scope-input {
+        height: 10;
+        margin-bottom: 1;
+    }
+
+    #scope-buttons {
+        height: auto;
+        align: center middle;
+    }
+
+    #scope-buttons Button {
+        margin: 0 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="scope-container"):
+            yield Static("Describe Task Scope", id="scope-title")
+            yield TextArea(id="scope-input")
+            with Horizontal(id="scope-buttons"):
+                yield Button("Cancel", id="btn-cancel", variant="default")
+                yield Button("Background", id="btn-background", variant="default")
+                yield Button("Foreground", id="btn-foreground", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#scope-input", TextArea).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.dismiss(None)
+            return
+
+        scope = self.query_one("#scope-input", TextArea).text.strip()
+        if not scope:
+            self.notify("Please enter a task scope", severity="warning")
+            return
+
+        foreground = event.button.id == "btn-foreground"
+        self.dismiss((scope, foreground))
 
 
 class SessionTable(DataTable):
@@ -400,7 +472,7 @@ class HopperApp(App):
         table.action_cursor_up()
 
     def action_new_session(self) -> None:
-        """Open project picker to create a new session."""
+        """Open project picker, then scope input, to create a new session."""
         if not self._projects:
             self.notify("No projects configured. Use: hop project add <path>", severity="warning")
             return
@@ -408,12 +480,19 @@ class HopperApp(App):
         def on_project_selected(project: Project | None) -> None:
             if project is None:
                 return  # Cancelled
-            session = create_session(self._sessions, project.name)
-            window_id = spawn_claude(session.id, project.path)
-            if window_id:
-                session.tmux_window = window_id
-                save_sessions(self._sessions)
-            self.refresh_table()
+
+            def on_scope_entered(result: tuple[str, bool] | None) -> None:
+                if result is None:
+                    return  # Cancelled
+                scope, foreground = result
+                session = create_session(self._sessions, project.name, scope)
+                window_id = spawn_claude(session.id, project.path, foreground)
+                if window_id:
+                    session.tmux_window = window_id
+                    save_sessions(self._sessions)
+                self.refresh_table()
+
+            self.push_screen(ScopeInputScreen(), on_scope_entered)
 
         self.push_screen(ProjectPickerScreen(self._projects), on_project_selected)
 

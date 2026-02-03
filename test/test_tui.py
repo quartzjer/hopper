@@ -14,6 +14,7 @@ from hopper.tui import (
     HopperApp,
     ProjectPickerScreen,
     Row,
+    ScopeInputScreen,
     format_stage_text,
     format_status_text,
     session_to_row,
@@ -259,6 +260,28 @@ async def test_cursor_up_navigation():
 
 
 @pytest.mark.asyncio
+async def test_cursor_preserved_after_refresh():
+    """Cursor position should be preserved when table is refreshed."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+        Session(id="bbbb2222-uuid", stage="ore", created_at=2000),
+        Session(id="cccc3333-uuid", stage="ore", created_at=3000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        table = app.query_one("#session-table")
+        # Move to row 2
+        await pilot.press("j")
+        await pilot.press("j")
+        assert table.cursor_row == 2
+        # Refresh table (simulates polling update)
+        app.refresh_table()
+        # Cursor should still be at row 2
+        assert table.cursor_row == 2
+
+
+@pytest.mark.asyncio
 async def test_get_session():
     """_get_session should find session by ID."""
     sessions = [
@@ -357,3 +380,93 @@ async def test_project_picker_navigation():
         # Move back up
         await pilot.press("k")
         assert option_list.highlighted == 0
+
+
+# Tests for ScopeInputScreen
+
+
+class ScopeTestApp(App):
+    """Test app wrapper for ScopeInputScreen."""
+
+    def __init__(self):
+        super().__init__()
+        self.scope_result = "not_set"  # sentinel value
+
+    def on_mount(self) -> None:
+        def capture_result(r):
+            self.scope_result = r
+
+        self.push_screen(ScopeInputScreen(), capture_result)
+
+
+@pytest.mark.asyncio
+async def test_scope_input_cancel_escape():
+    """Escape should dismiss the scope input with None result."""
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        await pilot.press("escape")
+        assert app.scope_result is None
+
+
+@pytest.mark.asyncio
+async def test_scope_input_cancel_button():
+    """Cancel button should dismiss the scope input with None result."""
+
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Tab to Cancel button (first button after TextArea)
+        await pilot.press("tab")
+        # Press enter to activate
+        await pilot.press("enter")
+        assert app.scope_result is None
+
+
+@pytest.mark.asyncio
+async def test_scope_input_foreground():
+    """Foreground button should return scope and True."""
+    from textual.widgets import TextArea
+
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Type some text
+        screen = app.screen
+        text_area = screen.query_one("#scope-input", TextArea)
+        text_area.insert("Test task scope")
+        # Tab to Foreground button (third button)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Background
+        await pilot.press("tab")  # Foreground
+        await pilot.press("enter")
+        assert app.scope_result == ("Test task scope", True)
+
+
+@pytest.mark.asyncio
+async def test_scope_input_background():
+    """Background button should return scope and False."""
+    from textual.widgets import TextArea
+
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Type some text
+        screen = app.screen
+        text_area = screen.query_one("#scope-input", TextArea)
+        text_area.insert("Test task scope")
+        # Tab to Background button (second button)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Background
+        await pilot.press("enter")
+        assert app.scope_result == ("Test task scope", False)
+
+
+@pytest.mark.asyncio
+async def test_scope_input_empty_validation():
+    """Empty scope should not submit - result stays as sentinel."""
+    app = ScopeTestApp()
+    async with app.run_test() as pilot:
+        # Tab to Foreground button without typing anything
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Background
+        await pilot.press("tab")  # Foreground
+        await pilot.press("enter")
+        # Should not have dismissed - still sentinel
+        assert app.scope_result == "not_set"

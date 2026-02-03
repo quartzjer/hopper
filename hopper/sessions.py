@@ -121,6 +121,7 @@ class Session:
     stage: Stage
     created_at: int  # milliseconds since epoch
     project: str = ""  # Project name this session belongs to
+    scope: str = ""  # User's task scope description
     updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
     state: State = "idle"
     message: str = ""  # Human-readable status message
@@ -146,6 +147,7 @@ class Session:
             "stage": self.stage,
             "created_at": self.created_at,
             "project": self.project,
+            "scope": self.scope,
             "updated_at": self.effective_updated_at,
             "state": self.state,
             "message": self.message,
@@ -159,6 +161,7 @@ class Session:
             stage=data["stage"],
             created_at=data["created_at"],
             project=data.get("project", ""),  # Backwards compat
+            scope=data.get("scope", ""),  # Backwards compat
             updated_at=data["updated_at"],
             state=data["state"],
             message=data.get("message", ""),  # Backwards compat
@@ -199,12 +202,13 @@ def save_sessions(sessions: list[Session]) -> None:
     os.replace(tmp_path, SESSIONS_FILE)
 
 
-def create_session(sessions: list[Session], project: str) -> Session:
+def create_session(sessions: list[Session], project: str, scope: str = "") -> Session:
     """Create a new session, add to list, and create its directory.
 
     Args:
         sessions: List of sessions to add to.
         project: Project name for this session.
+        scope: User's task scope description.
 
     Returns:
         The newly created session.
@@ -215,6 +219,7 @@ def create_session(sessions: list[Session], project: str) -> Session:
         stage="ore",
         created_at=now,
         project=project,
+        scope=scope,
         updated_at=now,
         state="new",
         message="Ready to start",

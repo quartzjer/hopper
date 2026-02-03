@@ -3,12 +3,15 @@
 from hopper.tmux import new_window, select_window
 
 
-def spawn_claude(session_id: str, project_path: str | None = None) -> str | None:
+def spawn_claude(
+    session_id: str, project_path: str | None = None, foreground: bool = True
+) -> str | None:
     """Spawn Claude via hopper ore in a new tmux window.
 
     Args:
         session_id: The hopper session ID.
         project_path: Working directory for the Claude session.
+        foreground: If True, switch to the new window. If False, stay in current window.
 
     Returns:
         The tmux window ID on success, None on failure.
@@ -16,7 +19,7 @@ def spawn_claude(session_id: str, project_path: str | None = None) -> str | None
     # Use hop ore to manage session lifecycle
     # On failure, pause so user can see the error before window closes
     command = f"hop ore {session_id} || {{ echo 'Failed. Press Enter to close.'; read; }}"
-    return new_window(command, cwd=project_path)
+    return new_window(command, cwd=project_path, background=not foreground)
 
 
 def switch_to_window(window_id: str) -> bool:
