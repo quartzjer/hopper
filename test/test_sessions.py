@@ -28,6 +28,7 @@ def test_session_to_dict_and_from_dict():
         created_at=1234567890,
         updated_at=1234567890,
         state="idle",
+        active=True,
         tmux_window=None,
     )
     data = session.to_dict()
@@ -38,7 +39,21 @@ def test_session_to_dict_and_from_dict():
     assert restored.created_at == session.created_at
     assert restored.updated_at == session.updated_at
     assert restored.state == session.state
+    assert restored.active == session.active
     assert restored.tmux_window == session.tmux_window
+
+
+def test_session_from_dict_backwards_compat_active():
+    """Sessions without 'active' field default to False."""
+    data = {
+        "id": "abc-123",
+        "stage": "ore",
+        "created_at": 1000,
+        "updated_at": 1000,
+        "state": "idle",
+    }
+    session = Session.from_dict(data)
+    assert session.active is False
 
 
 def test_load_sessions_empty(temp_config):

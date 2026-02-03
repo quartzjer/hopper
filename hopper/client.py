@@ -261,7 +261,10 @@ def ping(socket_path: Path, timeout: float = 2.0) -> bool:
 
 
 def session_exists(socket_path: Path, session_id: str, timeout: float = 2.0) -> bool:
-    """Check if a session exists and is active.
+    """Check if a session exists in the active sessions list.
+
+    Note: This checks existence only, not whether a client is connected.
+    Use get_session() and check the 'active' field for connection status.
 
     Args:
         socket_path: Path to the Unix socket
@@ -269,7 +272,7 @@ def session_exists(socket_path: Path, session_id: str, timeout: float = 2.0) -> 
         timeout: Timeout in seconds
 
     Returns:
-        True if session exists and is active, False otherwise
+        True if session exists in the sessions list, False otherwise
     """
     response = connect(socket_path, session_id=session_id, timeout=timeout)
     if response is None:

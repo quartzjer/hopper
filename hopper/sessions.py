@@ -125,6 +125,7 @@ class Session:
     updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
     state: State = "idle"
     status: str = ""  # Human-readable status text
+    active: bool = False  # Whether a hop ore client is connected
     tmux_window: str | None = None  # tmux window ID (e.g., "@1")
 
     @property
@@ -151,6 +152,7 @@ class Session:
             "updated_at": self.effective_updated_at,
             "state": self.state,
             "status": self.status,
+            "active": self.active,
             "tmux_window": self.tmux_window,
         }
 
@@ -165,6 +167,7 @@ class Session:
             updated_at=data["updated_at"],
             state=data["state"],
             status=data.get("status", ""),
+            active=data.get("active", False),  # Backwards compat
             tmux_window=data.get("tmux_window"),  # Backwards compat
         )
 

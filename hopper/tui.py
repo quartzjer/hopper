@@ -65,6 +65,7 @@ class Row:
     stage: str  # STAGE_ORE or STAGE_PROCESSING
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_IDLE, STATUS_ERROR
+    active: bool = False  # Whether hop ore is connected
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
 
@@ -88,6 +89,7 @@ def session_to_row(session: Session) -> Row:
         stage=stage,
         age=format_age(session.created_at),
         status=status,
+        active=session.active,
         project=session.project,
         status_text=session.status,
     )
@@ -105,6 +107,14 @@ def format_status_text(status: str) -> Text:
         return Text(status, style="bright_magenta")
     else:  # STATUS_IDLE
         return Text(status, style="bright_black")
+
+
+def format_active_text(active: bool) -> Text:
+    """Format an active indicator with color using Rich Text."""
+    if active:
+        return Text("▸", style="bright_cyan")
+    else:
+        return Text("▹", style="bright_black")
 
 
 def format_stage_text(stage: str) -> Text:
@@ -267,6 +277,7 @@ class SessionTable(DataTable):
 
     # Column keys for update_cell operations
     COL_STATUS = "status"
+    COL_ACTIVE = "active"
     COL_STAGE = "stage"
     COL_ID = "id"
     COL_PROJECT = "project"
@@ -280,6 +291,7 @@ class SessionTable(DataTable):
     def on_mount(self) -> None:
         """Set up columns when mounted with explicit keys."""
         self.add_column("", key=self.COL_STATUS)
+        self.add_column("", key=self.COL_ACTIVE)
         self.add_column("s", key=self.COL_STAGE)
         self.add_column("id", key=self.COL_ID)
         self.add_column("project", key=self.COL_PROJECT)
@@ -420,6 +432,7 @@ class HopperApp(App):
             if row.id in existing_keys:
                 # Update existing row cells
                 table.update_cell(row.id, SessionTable.COL_STATUS, format_status_text(row.status))
+                table.update_cell(row.id, SessionTable.COL_ACTIVE, format_active_text(row.active))
                 table.update_cell(row.id, SessionTable.COL_STAGE, format_stage_text(row.stage))
                 table.update_cell(row.id, SessionTable.COL_ID, row.short_id)
                 table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
@@ -431,6 +444,7 @@ class HopperApp(App):
                 # Add new row
                 table.add_row(
                     format_status_text(row.status),
+                    format_active_text(row.active),
                     format_stage_text(row.stage),
                     row.short_id,
                     row.project,
@@ -521,14 +535,12 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        # Session state is authoritative: running/stuck means hop ore is connected and window exists
-        if session.state in ("running", "stuck") and session.tmux_window:
-            # Session is active - switch to existing window
+        if session.active and session.tmux_window:
+            # Session has a connected hop ore - switch to existing window
             if not switch_to_window(session.tmux_window):
-                # This shouldn't happen if state tracking is correct, but handle it
                 self.notify("Failed to switch to window", severity="error")
         else:
-            # Session is not running - spawn new hop ore instance
+            # Session is not active - spawn new hop ore instance
             window_id = spawn_claude(session.id, project_path)
             if window_id:
                 session.tmux_window = window_id

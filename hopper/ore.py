@@ -73,6 +73,14 @@ class OreRunner:
             if response:
                 session_data = response.get("session")
                 if session_data:
+                    # Check if another hop ore is already connected
+                    if session_data.get("active", False):
+                        logger.error(
+                            f"Session {self.session_id[:8]} already has an active connection"
+                        )
+                        print(f"Session {self.session_id[:8]} is already active")
+                        return 1
+
                     state = session_data.get("state")
                     self.is_new_session = state == "new"
 
@@ -87,21 +95,22 @@ class OreRunner:
                     # Get scope for prompt context
                     self.scope = session_data.get("scope", "")
 
-            # Start persistent connection for state updates
+            # Start persistent connection and register ownership (sets active=True)
             self.connection = HopperConnection(self.socket_path)
             self.connection.start()
+            self.connection.emit("session_register", session_id=self.session_id)
 
             # Run Claude (blocking) - notifies "running" after successful start
             exit_code, error_msg = self._run_claude()
 
-            # Only emit error state explicitly - server handles idle on disconnect
+            # Emit error state explicitly; on clean exit the server just clears active
             if exit_code == 127:
                 self._emit_state("error", error_msg or "Command not found")
             elif exit_code != 0 and exit_code != 130:
                 # Non-zero exit (except interrupt) - set error state
                 msg = error_msg or f"Exited with code {exit_code}"
                 self._emit_state("error", msg)
-            # For success (0) or interrupt (130), let server handle via disconnect
+            # For success (0) or interrupt (130), server clears active on disconnect
 
             return exit_code
 
@@ -120,7 +129,6 @@ class OreRunner:
     def _handle_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
         logger.debug(f"Received signal {signum}")
-        # Server handles state transition to idle on disconnect
         # Re-raise as KeyboardInterrupt so subprocess handling works correctly
         if signum == signal.SIGINT:
             raise KeyboardInterrupt

@@ -16,6 +16,7 @@ from hopper.tui import (
     ProjectPickerScreen,
     Row,
     ScopeInputScreen,
+    format_active_text,
     format_stage_text,
     format_status_text,
     session_to_row,
@@ -60,6 +61,22 @@ def test_session_to_row_error():
     assert row.stage == STAGE_ORE
 
 
+def test_session_to_row_active():
+    """Active session has active=True in row."""
+    session = Session(
+        id="abcd1234-5678-uuid", stage="ore", created_at=1000, state="running", active=True
+    )
+    row = session_to_row(session)
+    assert row.active is True
+
+
+def test_session_to_row_inactive():
+    """Inactive session has active=False in row."""
+    session = Session(id="abcd1234-5678-uuid", stage="ore", created_at=1000, state="idle")
+    row = session_to_row(session)
+    assert row.active is False
+
+
 def test_session_to_row_processing_stage():
     """Processing session has gear stage indicator."""
     session = Session(id="abcd1234-5678-uuid", stage="processing", created_at=1000, state="idle")
@@ -95,6 +112,23 @@ def test_format_status_text_idle():
     """format_status_text returns bright_black for idle."""
     text = format_status_text(STATUS_IDLE)
     assert str(text) == STATUS_IDLE
+    assert text.style == "bright_black"
+
+
+# Tests for format_active_text
+
+
+def test_format_active_text_active():
+    """format_active_text returns bright_cyan for active."""
+    text = format_active_text(True)
+    assert str(text) == "▸"
+    assert text.style == "bright_cyan"
+
+
+def test_format_active_text_inactive():
+    """format_active_text returns bright_black for inactive."""
+    text = format_active_text(False)
+    assert str(text) == "▹"
     assert text.style == "bright_black"
 
 

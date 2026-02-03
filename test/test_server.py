@@ -303,25 +303,46 @@ def test_server_handles_session_set_state(socket_path, server, temp_config):
     client.close()
 
 
-def test_server_registers_session_client_on_connect(socket_path, server, temp_config):
-    """Server registers client as session owner when connecting with session_id."""
+def test_server_connect_does_not_register_ownership(socket_path, server, temp_config):
+    """Connect message returns session data but does not register ownership."""
     from hopper.sessions import Session, save_sessions
 
-    # Create a test session
     session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
     server.sessions = [session]
     save_sessions(server.sessions)
 
-    # Connect client with session_id
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.connect(str(socket_path))
     client.settimeout(2.0)
 
     msg = {"type": "connect", "session_id": "test-id"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-
-    # Wait for response
     client.recv(4096)
+
+    # Give server time to process
+    time.sleep(0.2)
+
+    # Connect should NOT register ownership or set active
+    assert "test-id" not in server.session_clients
+    assert server.sessions[0].active is False
+
+    client.close()
+
+
+def test_server_registers_on_session_register(socket_path, server, temp_config):
+    """session_register message claims ownership and sets active=True."""
+    from hopper.sessions import Session, save_sessions
+
+    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    msg = {"type": "session_register", "session_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
     # Wait for registration
     for _ in range(50):
@@ -329,14 +350,14 @@ def test_server_registers_session_client_on_connect(socket_path, server, temp_co
             break
         time.sleep(0.1)
 
-    # Should be registered
     assert "test-id" in server.session_clients
+    assert server.sessions[0].active is True
 
     client.close()
 
 
-def test_server_clears_state_on_disconnect(socket_path, server, temp_config):
-    """Server sets session to idle and clears tmux_window on client disconnect."""
+def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config):
+    """Server sets active=False and clears tmux_window on client disconnect."""
     from hopper.sessions import Session, save_sessions
 
     # Create a test session in running state with tmux window
@@ -344,14 +365,13 @@ def test_server_clears_state_on_disconnect(socket_path, server, temp_config):
     server.sessions = [session]
     save_sessions(server.sessions)
 
-    # Connect client with session_id
+    # Connect client and register ownership
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.connect(str(socket_path))
     client.settimeout(2.0)
 
-    msg = {"type": "connect", "session_id": "test-id"}
+    msg = {"type": "session_register", "session_id": "test-id"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-    client.recv(4096)
 
     # Wait for registration
     for _ in range(50):
@@ -359,23 +379,26 @@ def test_server_clears_state_on_disconnect(socket_path, server, temp_config):
             break
         time.sleep(0.1)
 
+    assert server.sessions[0].active is True
+
     # Disconnect client
     client.close()
 
     # Wait for disconnect handling
     for _ in range(50):
-        if server.sessions[0].state == "idle":
+        if not server.sessions[0].active:
             break
         time.sleep(0.1)
 
-    # Session should be idle with tmux_window cleared
-    assert server.sessions[0].state == "idle"
+    # active=False, tmux_window cleared, but state/status untouched
+    assert server.sessions[0].active is False
     assert server.sessions[0].tmux_window is None
+    assert server.sessions[0].state == "running"
     assert "test-id" not in server.session_clients
 
 
-def test_server_preserves_error_state_on_disconnect(socket_path, server, temp_config):
-    """Server preserves error state on client disconnect (doesn't override to idle)."""
+def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
+    """Server preserves state and status on client disconnect (only toggles active)."""
     from hopper.sessions import Session, save_sessions
 
     # Create a test session in error state
@@ -390,14 +413,13 @@ def test_server_preserves_error_state_on_disconnect(socket_path, server, temp_co
     server.sessions = [session]
     save_sessions(server.sessions)
 
-    # Connect client with session_id
+    # Connect client and register ownership
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.connect(str(socket_path))
     client.settimeout(2.0)
 
-    msg = {"type": "connect", "session_id": "test-id"}
+    msg = {"type": "session_register", "session_id": "test-id"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-    client.recv(4096)
 
     # Wait for registration
     for _ in range(50):
@@ -414,14 +436,15 @@ def test_server_preserves_error_state_on_disconnect(socket_path, server, temp_co
             break
         time.sleep(0.1)
 
-    # Session should still be in error state, but tmux_window cleared
+    # State and status preserved, active set to False
     assert server.sessions[0].state == "error"
     assert server.sessions[0].status == "Something failed"
+    assert server.sessions[0].active is False
     assert server.sessions[0].tmux_window is None
 
 
 def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_config):
-    """Server disconnects old client when new client connects for same session."""
+    """Server disconnects old client when new client registers for same session."""
     from hopper.sessions import Session, save_sessions
 
     # Create a test session
@@ -429,14 +452,13 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
     server.sessions = [session]
     save_sessions(server.sessions)
 
-    # First client connects
+    # First client registers
     client1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client1.connect(str(socket_path))
     client1.settimeout(2.0)
 
-    msg = {"type": "connect", "session_id": "test-id"}
+    msg = {"type": "session_register", "session_id": "test-id"}
     client1.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-    client1.recv(4096)
 
     # Wait for registration
     for _ in range(50):
@@ -446,14 +468,13 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
 
     old_socket = server.session_clients["test-id"]
 
-    # Second client connects for same session
+    # Second client registers for same session
     client2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client2.connect(str(socket_path))
     client2.settimeout(2.0)
 
-    msg = {"type": "connect", "session_id": "test-id"}
+    msg = {"type": "session_register", "session_id": "test-id"}
     client2.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-    client2.recv(4096)
 
     # Wait for re-registration
     for _ in range(50):

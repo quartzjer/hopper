@@ -78,10 +78,26 @@ class TestOreRunner:
             exit_code = runner.run()
 
         assert exit_code == 0
-        # Should emit running state (server handles idle on disconnect)
+        # Should emit running state
         assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
-        # Should NOT emit idle - server handles that on disconnect
+        # Should NOT emit idle - server handles active flag on disconnect
         assert not any(e[0] == "session_set_state" and e[1]["state"] == "idle" for e in emitted)
+
+    def test_run_bails_if_session_already_active(self):
+        """Runner exits with code 1 if session is already active."""
+        runner = OreRunner("test-session", Path("/tmp/test.sock"))
+
+        mock_response = {
+            "type": "connected",
+            "tmux": None,
+            "session": {"state": "running", "active": True},
+            "session_found": True,
+        }
+
+        with patch("hopper.ore.connect", return_value=mock_response):
+            exit_code = runner.run()
+
+        assert exit_code == 1
 
     def test_run_emits_error_state_on_nonzero_exit(self):
         """Runner emits error state when Claude exits with non-zero."""

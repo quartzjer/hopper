@@ -47,8 +47,8 @@ class Server:
     Uses a single writer thread to serialize all broadcasts, preventing
     race conditions when multiple client handler threads send concurrently.
 
-    Tracks which clients own which sessions for automatic state management
-    on disconnect.
+    Tracks which clients own which sessions. Sets active=False and clears
+    tmux_window on disconnect; state/status are client-driven.
     """
 
     def __init__(self, socket_path: Path, tmux_location: dict | None = None):
@@ -71,6 +71,16 @@ class Server:
         """Start the server (blocking)."""
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         self.sessions = load_sessions()
+
+        # Clear stale active flags from previous run (no clients connected yet)
+        stale = False
+        for session in self.sessions:
+            if session.active or session.tmux_window:
+                session.active = False
+                session.tmux_window = None
+                stale = True
+        if stale:
+            save_sessions(self.sessions)
 
         # Remove stale socket file
         if self.socket_path.exists():
@@ -145,7 +155,7 @@ class Server:
             logger.debug(f"Client disconnected ({len(self.clients)} remaining)")
 
     def _on_client_disconnect(self, conn: socket.socket) -> None:
-        """Handle client disconnect - clean up session ownership if any."""
+        """Handle client disconnect - set active=False and clear tmux_window."""
         with self.lock:
             session_id = self.client_sessions.pop(conn, None)
             if session_id:
@@ -154,28 +164,22 @@ class Server:
         if not session_id:
             return
 
-        # Find the session and update state
         session = next((s for s in self.sessions if s.id == session_id), None)
         if not session:
             return
 
-        # Only transition to idle if currently running (preserve error state)
-        if session.state in ("running", "stuck"):
-            session.state = "idle"
-            session.status = "Disconnected"
-            session.touch()
-
-        # Clear tmux_window since hop ore closing means window is gone
+        session.active = False
         session.tmux_window = None
+        session.touch()
         save_sessions(self.sessions)
 
-        logger.debug(f"Session {session_id[:8]} disconnected, state={session.state}")
-        self.broadcast({"type": "session_state_changed", "session": session.to_dict()})
+        logger.debug(f"Session {session_id[:8]} disconnected, active=False")
+        self.broadcast({"type": "session_updated", "session": session.to_dict()})
 
     def _register_session_client(self, session_id: str, conn: socket.socket) -> None:
         """Register a client as owning a session.
 
-        If another client already owns this session (stale connection), disconnect it.
+        Sets active=True on the session and disconnects any stale owner.
         """
         with self.lock:
             # Check for existing owner
@@ -195,14 +199,22 @@ class Server:
             self.session_clients[session_id] = conn
             self.client_sessions[conn] = session_id
 
-        logger.debug(f"Registered client for session {session_id[:8]}")
+        # Set active on the session
+        session = next((s for s in self.sessions if s.id == session_id), None)
+        if session:
+            session.active = True
+            session.touch()
+            save_sessions(self.sessions)
+            self.broadcast({"type": "session_updated", "session": session.to_dict()})
+
+        logger.debug(f"Registered client for session {session_id[:8]}, active=True")
 
     def _handle_message(self, message: dict, conn: socket.socket) -> None:
         """Handle an incoming message, responding directly if needed."""
         msg_type = message.get("type")
 
         if msg_type == "connect":
-            # Unified connect/connected handshake
+            # Read-only handshake: returns session data without claiming ownership
             session_id = message.get("session_id")
             response: dict = {
                 "type": "connected",
@@ -213,11 +225,15 @@ class Server:
                 response["session"] = session.to_dict() if session else None
                 response["session_found"] = session is not None
 
-                # Register session ownership (for persistent connections like hop ore)
+            self._send_response(conn, response)
+
+        elif msg_type == "session_register":
+            # Persistent connection claims ownership of a session (sets active=True)
+            session_id = message.get("session_id")
+            if session_id:
+                session = next((s for s in self.sessions if s.id == session_id), None)
                 if session:
                     self._register_session_client(session_id, conn)
-
-            self._send_response(conn, response)
 
         elif msg_type == "ping":
             self._send_response(conn, {"type": "pong"})
