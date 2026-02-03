@@ -5,7 +5,7 @@ from string import Template
 
 from hopper.config import load_config
 
-PROMPTS_DIR = Path(__file__).parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 def _build_template_vars(context: dict[str, str] | None = None) -> dict[str, str]:
