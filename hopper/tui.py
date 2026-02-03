@@ -75,10 +75,10 @@ class Row:
 
     id: str
     short_id: str
-    stage: str  # STAGE_ORE or STAGE_PROCESSING
+    stage: str  # STAGE_ORE, STAGE_PROCESSING, or STAGE_SHIP
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
-    active: bool = False  # Whether hop ore is connected
+    active: bool = False  # Whether a runner is connected
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
 
@@ -114,15 +114,13 @@ def session_to_row(session: Session) -> Row:
 
 
 def format_status_text(status: str) -> Text:
-    """Format a status indicator with color using Rich Text."""
-    if status == STATUS_RUNNING:
-        return Text(status, style="bright_green")
-    elif status == STATUS_STUCK:
-        return Text(status, style="bright_yellow")
-    elif status == STATUS_ERROR:
-        return Text(status, style="bright_red")
-    else:  # STATUS_NEW
-        return Text(status, style="bright_black")
+    """Format a status icon with color using Rich Text."""
+    return Text(status, style=STATUS_COLORS.get(status, ""))
+
+
+def format_status_label(label: str, status: str) -> Text:
+    """Format status text with color matching the status icon."""
+    return Text(label.replace("\n", " ") if label else "", style=STATUS_COLORS.get(status, ""))
 
 
 def format_active_text(active: bool) -> Text:
@@ -149,8 +147,6 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("enter", "select", "Select"),
-        Binding("j", "cursor_down", show=False),
-        Binding("k", "cursor_up", show=False),
     ]
 
     CSS = """
@@ -209,12 +205,6 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         project = self._projects[event.option_index]
         self.dismiss(project)
-
-    def action_cursor_down(self) -> None:
-        self.query_one("#project-list", OptionList).action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        self.query_one("#project-list", OptionList).action_cursor_up()
 
 
 class TextInputScreen(ModalScreen):
@@ -458,6 +448,16 @@ class SessionTable(DataTable):
         self.add_column("last", key=self.COL_AGE)
         self.add_column("status", key=self.COL_STATUS_TEXT)
 
+    def on_resize(self, event: events.Resize) -> None:
+        """Make the last column fill remaining width."""
+        cols = list(self.columns.values())
+        if not cols:
+            return
+        fixed_width = sum(c.get_render_width(self) for c in cols[:-1])
+        last = cols[-1]
+        last.width = max(1, event.size.width - fixed_width - 2 * self.cell_padding)
+        last.auto_width = False
+
 
 class BacklogTable(DataTable):
     """Table displaying backlog items."""
@@ -473,8 +473,18 @@ class BacklogTable(DataTable):
     def on_mount(self) -> None:
         """Set up columns when mounted with explicit keys."""
         self.add_column("project", key=self.COL_PROJECT)
-        self.add_column("description", key=self.COL_DESCRIPTION)
         self.add_column("added", key=self.COL_AGE)
+        self.add_column("description", key=self.COL_DESCRIPTION)
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Make the last column fill remaining width."""
+        cols = list(self.columns.values())
+        if not cols:
+            return
+        fixed_width = sum(c.get_render_width(self) for c in cols[:-1])
+        last = cols[-1]
+        last.width = max(1, event.size.width - fixed_width - 2 * self.cell_padding)
+        last.auto_width = False
 
 
 class HopperApp(App):
@@ -560,8 +570,6 @@ class HopperApp(App):
         Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
         Binding("ctrl+d", "quit", "Quit", show=False, priority=True),
         Binding("tab", "switch_table", "Switch", priority=True),
-        Binding("j", "cursor_down", show=False),
-        Binding("k", "cursor_up", show=False),
         Binding("down", "cursor_down", show=False),
         Binding("up", "cursor_up", show=False),
         Binding("c", "new_session", "Create"),
@@ -629,15 +637,13 @@ class HopperApp(App):
         """
         table = self.query_one("#session-table", SessionTable)
 
-        # Build rows from sessions (ore first, then processing)
-        rows: list[Row] = []
-        ore_sessions = [s for s in self._sessions if s.stage == "ore"]
-        processing_sessions = [s for s in self._sessions if s.stage == "processing"]
-
-        for session in ore_sessions:
-            rows.append(session_to_row(session))
-        for session in processing_sessions:
-            rows.append(session_to_row(session))
+        # Build rows from sessions (ore first, then processing; skip ship)
+        stage_order = {"ore": 0, "processing": 1}
+        rows = [
+            session_to_row(s)
+            for s in sorted(self._sessions, key=lambda s: stage_order.get(s.stage, 2))
+            if s.stage in stage_order
+        ]
 
         # Get current row keys in table (excluding hint row)
         existing_keys: set[str] = set()
@@ -666,7 +672,7 @@ class HopperApp(App):
                 table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, SessionTable.COL_AGE, row.age)
                 table.update_cell(
-                    row.id, SessionTable.COL_STATUS_TEXT, self._format_status(row.status_text, row.status)
+                    row.id, SessionTable.COL_STATUS_TEXT, format_status_label(row.status_text, row.status)
                 )
             else:
                 # Add new row (before hint if present)
@@ -680,7 +686,7 @@ class HopperApp(App):
                     row.short_id,
                     row.project,
                     row.age,
-                    self._format_status(row.status_text, row.status),
+                    format_status_label(row.status_text, row.status),
                     key=row.id,
                 )
 
@@ -719,23 +725,12 @@ class HopperApp(App):
                 if has_hint:
                     table.remove_row(HINT_BACKLOG)
                     has_hint = False
-                table.add_row(item.project, item.description, age, key=item.id)
+                table.add_row(item.project, age, item.description, key=item.id)
 
         # Add hint row at the bottom if not already there
         if not has_hint:
             hint = Text("b to add to backlog", style="bright_black italic")
-            table.add_row("", hint, "", key=HINT_BACKLOG)
-
-    def _format_status(self, status_text: str, status: str) -> Text:
-        """Format status text for display with color matching the status icon."""
-        label = status_text.replace("\n", " ") if status_text else ""
-        if status == STATUS_RUNNING:
-            return Text(label, style="bright_green")
-        elif status == STATUS_STUCK:
-            return Text(label, style="bright_yellow")
-        elif status == STATUS_ERROR:
-            return Text(label, style="bright_red")
-        return Text(label)
+            table.add_row("", "", hint, key=HINT_BACKLOG)
 
     def _get_selected_row_key(self, table: DataTable) -> str | None:
         """Get the row key of the selected row in a table."""

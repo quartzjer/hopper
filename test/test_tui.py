@@ -20,6 +20,7 @@ from hopper.tui import (
     ScopeInputScreen,
     format_active_text,
     format_stage_text,
+    format_status_label,
     format_status_text,
     session_to_row,
 )
@@ -172,6 +173,43 @@ def test_format_stage_text_processing():
     assert text.style == "bright_yellow"
 
 
+# Tests for format_status_label
+
+
+def test_format_status_label_running():
+    """format_status_label returns bright_green for running status."""
+    text = format_status_label("Claude running", STATUS_RUNNING)
+    assert str(text) == "Claude running"
+    assert text.style == "bright_green"
+
+
+def test_format_status_label_stuck():
+    """format_status_label returns bright_yellow for stuck status."""
+    text = format_status_label("No output for 30s", STATUS_STUCK)
+    assert str(text) == "No output for 30s"
+    assert text.style == "bright_yellow"
+
+
+def test_format_status_label_error():
+    """format_status_label returns bright_red for error status."""
+    text = format_status_label("Process exited", STATUS_ERROR)
+    assert str(text) == "Process exited"
+    assert text.style == "bright_red"
+
+
+def test_format_status_label_new():
+    """format_status_label returns no style for new status."""
+    text = format_status_label("", STATUS_NEW)
+    assert str(text) == ""
+    assert text.style == "bright_black"
+
+
+def test_format_status_label_strips_newlines():
+    """format_status_label replaces newlines with spaces."""
+    text = format_status_label("line1\nline2", STATUS_RUNNING)
+    assert str(text) == "line1 line2"
+
+
 # Tests for Row dataclass
 
 
@@ -298,7 +336,7 @@ async def test_quit_with_q():
 
 @pytest.mark.asyncio
 async def test_cursor_down_navigation():
-    """j/down should move cursor down."""
+    """down should move cursor down."""
     sessions = [
         Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
         Session(id="bbbb2222-uuid", stage="ore", created_at=2000),
@@ -310,13 +348,13 @@ async def test_cursor_down_navigation():
         # Should start at row 0
         assert table.cursor_row == 0
         # Press j to move down
-        await pilot.press("j")
+        await pilot.press("down")
         assert table.cursor_row == 1
 
 
 @pytest.mark.asyncio
 async def test_cursor_up_navigation():
-    """k/up should move cursor up."""
+    """up should move cursor up."""
     sessions = [
         Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
         Session(id="bbbb2222-uuid", stage="ore", created_at=2000),
@@ -326,10 +364,10 @@ async def test_cursor_up_navigation():
     async with app.run_test() as pilot:
         table = app.query_one("#session-table")
         # Move down first
-        await pilot.press("j")
+        await pilot.press("down")
         assert table.cursor_row == 1
         # Press k to move up
-        await pilot.press("k")
+        await pilot.press("up")
         assert table.cursor_row == 0
 
 
@@ -346,8 +384,8 @@ async def test_cursor_preserved_after_refresh():
     async with app.run_test() as pilot:
         table = app.query_one("#session-table")
         # Move to row 2
-        await pilot.press("j")
-        await pilot.press("j")
+        await pilot.press("down")
+        await pilot.press("down")
         assert table.cursor_row == 2
         # Refresh table (simulates polling update)
         app.refresh_table()
@@ -434,7 +472,7 @@ async def test_project_picker_select():
 
 @pytest.mark.asyncio
 async def test_project_picker_navigation():
-    """j/k should navigate the project list."""
+    """Arrow keys should navigate the project list."""
     from textual.widgets import OptionList
 
     projects = [
@@ -449,10 +487,10 @@ async def test_project_picker_navigation():
         # Should start at 0
         assert option_list.highlighted == 0
         # Move down
-        await pilot.press("j")
+        await pilot.press("down")
         assert option_list.highlighted == 1
         # Move back up
-        await pilot.press("k")
+        await pilot.press("up")
         assert option_list.highlighted == 0
 
 
@@ -637,7 +675,7 @@ async def test_hint_row_stays_highlighted():
     async with app.run_test() as pilot:
         table = app.query_one("#session-table")
         # Move to hint row (row 1, after the one session)
-        await pilot.press("j")
+        await pilot.press("down")
         assert table.cursor_row == 1
         # Simulate polling refresh
         app.refresh_table()
@@ -657,7 +695,7 @@ async def test_enter_on_session_hint_triggers_new_session():
         called = []
         app.action_new_session = lambda: called.append(True)
         # Move to hint row and press enter
-        await pilot.press("j")
+        await pilot.press("down")
         await pilot.press("enter")
         assert len(called) == 1
 
@@ -677,7 +715,7 @@ async def test_enter_on_backlog_hint_triggers_new_backlog():
         app.action_new_backlog = lambda: called.append(True)
         # Switch to backlog, move to hint row
         await pilot.press("tab")
-        await pilot.press("j")
+        await pilot.press("down")
         await pilot.press("enter")
         assert len(called) == 1
 
@@ -837,8 +875,8 @@ async def test_tab_switches_to_backlog_even_when_empty():
 
 
 @pytest.mark.asyncio
-async def test_jk_navigation_in_backlog():
-    """j/k should navigate within the backlog table when focused."""
+async def test_arrow_navigation_in_backlog():
+    """Arrow keys should navigate within the backlog table when focused."""
     from hopper.backlog import BacklogItem
     from hopper.tui import BacklogTable
 
@@ -853,9 +891,9 @@ async def test_jk_navigation_in_backlog():
         await pilot.press("tab")
         table = app.query_one("#backlog-table", BacklogTable)
         assert table.cursor_row == 0
-        await pilot.press("j")
+        await pilot.press("down")
         assert table.cursor_row == 1
-        await pilot.press("k")
+        await pilot.press("up")
         assert table.cursor_row == 0
 
 
