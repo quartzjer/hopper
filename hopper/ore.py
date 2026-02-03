@@ -121,6 +121,13 @@ class OreRunner:
 
     def _run_claude(self) -> tuple[int, str | None]:
         """Run Claude with the session ID. Returns (exit_code, error_message)."""
+        # Validate project directory exists
+        cwd: str | None = None
+        if self.project_dir:
+            if not Path(self.project_dir).is_dir():
+                return 1, f"Project directory not found: {self.project_dir}"
+            cwd = self.project_dir
+
         # Set environment
         env = os.environ.copy()
         env["HOPPER_SID"] = self.session_id
@@ -142,7 +149,7 @@ class OreRunner:
 
         try:
             # Start Claude process, capturing stderr for error messages
-            proc = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE, cwd=cwd)
 
             # Notify server we're running (after successful process start)
             self._emit_state("running", "Claude running")

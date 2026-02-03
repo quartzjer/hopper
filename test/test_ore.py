@@ -308,6 +308,111 @@ class TestOreRunner:
         mock_conn.start.assert_called_once()
         mock_conn.stop.assert_called_once()
 
+    def test_run_sets_cwd_to_project_dir(self, tmp_path):
+        """Runner sets cwd to project directory when available."""
+        runner = OreRunner("test-session", Path("/tmp/test.sock"))
+
+        mock_conn = MagicMock()
+        mock_conn.emit = MagicMock(return_value=True)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stderr = None
+
+        # Create a real temp directory for the project
+        project_dir = tmp_path / "my-project"
+        project_dir.mkdir()
+
+        mock_response = {
+            "type": "connected",
+            "tmux": None,
+            "session": {"state": "idle", "project": "my-project"},
+            "session_found": True,
+        }
+
+        mock_project = MagicMock()
+        mock_project.path = str(project_dir)
+
+        with (
+            patch("hopper.ore.connect", return_value=mock_response),
+            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.ore.find_project", return_value=mock_project),
+            patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            runner.run()
+
+        # Check cwd was set
+        mock_popen.assert_called_once()
+        call_kwargs = mock_popen.call_args[1]
+        assert call_kwargs["cwd"] == str(project_dir)
+
+    def test_run_fails_if_project_dir_missing(self, tmp_path):
+        """Runner returns error if project directory doesn't exist."""
+        runner = OreRunner("test-session", Path("/tmp/test.sock"))
+
+        emitted = []
+
+        mock_conn = MagicMock()
+        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
+
+        mock_response = {
+            "type": "connected",
+            "tmux": None,
+            "session": {"state": "idle", "project": "my-project"},
+            "session_found": True,
+        }
+
+        # Point to a non-existent directory
+        missing_dir = tmp_path / "does-not-exist"
+
+        mock_project = MagicMock()
+        mock_project.path = str(missing_dir)
+
+        with (
+            patch("hopper.ore.connect", return_value=mock_response),
+            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.ore.find_project", return_value=mock_project),
+        ):
+            exit_code = runner.run()
+
+        assert exit_code == 1
+        # Should emit error state
+        error_emissions = [
+            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "error"
+        ]
+        assert len(error_emissions) == 1
+        assert "not found" in error_emissions[0][1]["message"]
+
+    def test_run_without_project_uses_no_cwd(self):
+        """Runner passes cwd=None when no project is set."""
+        runner = OreRunner("test-session", Path("/tmp/test.sock"))
+
+        mock_conn = MagicMock()
+        mock_conn.emit = MagicMock(return_value=True)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stderr = None
+
+        mock_response = {
+            "type": "connected",
+            "tmux": None,
+            "session": {"state": "idle"},  # No project
+            "session_found": True,
+        }
+
+        with (
+            patch("hopper.ore.connect", return_value=mock_response),
+            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            runner.run()
+
+        # Check cwd is None (inherit from parent)
+        mock_popen.assert_called_once()
+        call_kwargs = mock_popen.call_args[1]
+        assert call_kwargs["cwd"] is None
+
 
 class TestRunOre:
     def test_run_ore_creates_runner(self):
