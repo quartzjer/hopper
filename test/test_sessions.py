@@ -27,7 +27,7 @@ def test_session_to_dict_and_from_dict():
         stage="ore",
         created_at=1234567890,
         updated_at=1234567890,
-        state="idle",
+        state="new",
         active=True,
         tmux_window=None,
     )
@@ -50,7 +50,7 @@ def test_session_from_dict_backwards_compat_active():
         "stage": "ore",
         "created_at": 1000,
         "updated_at": 1000,
-        "state": "idle",
+        "state": "new",
     }
     session = Session.from_dict(data)
     assert session.active is False
@@ -411,7 +411,7 @@ def test_update_session_stage_touches(temp_config):
 def test_update_session_state(temp_config):
     """update_session_state changes state and message, touches timestamp."""
     sessions_list = [
-        Session(id="test-id", stage="ore", created_at=1000, updated_at=1000, state="idle")
+        Session(id="test-id", stage="ore", created_at=1000, updated_at=1000, state="new")
     ]
     save_sessions(sessions_list)
 

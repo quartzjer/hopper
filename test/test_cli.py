@@ -196,9 +196,9 @@ def test_ore_force_allows_running_session(capsys):
     mock_run.assert_called_once()
 
 
-def test_ore_allows_idle_session(capsys):
-    """ore allows session that is idle."""
-    mock_session = {"id": "test-1234-session", "state": "idle"}
+def test_ore_allows_new_session(capsys):
+    """ore allows session that is new."""
+    mock_session = {"id": "test-1234-session", "state": "new"}
     with patch("hopper.cli.require_server", return_value=None):
         with patch("hopper.client.get_session", return_value=mock_session):
             with patch("hopper.ore.run_ore", return_value=0) as mock_run:
@@ -865,5 +865,5 @@ def test_shovel_saves_file(tmp_path, monkeypatch, capsys):
     mock_set.assert_called_once()
     _, sid, state, status = mock_set.call_args[0]
     assert sid == session_id
-    assert state == "idle"
+    assert state == "completed"
     assert "complete" in status.lower()

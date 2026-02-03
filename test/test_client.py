@@ -89,14 +89,14 @@ def test_connect_with_session_id_found(server, socket_path):
     """Connect returns session data when session exists."""
     from hopper.sessions import Session
 
-    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    session = Session(id="test-id", stage="ore", created_at=1000, state="new")
     server.sessions = [session]
 
     result = connect(socket_path, session_id="test-id")
     assert result is not None
     assert result["session_found"] is True
     assert result["session"]["id"] == "test-id"
-    assert result["session"]["state"] == "idle"
+    assert result["session"]["state"] == "new"
 
 
 def test_connect_with_session_id_not_found(server, socket_path):
@@ -151,7 +151,7 @@ def test_session_exists_found(server, socket_path):
     """session_exists returns True when session exists."""
     from hopper.sessions import Session
 
-    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    session = Session(id="test-id", stage="ore", created_at=1000, state="new")
     server.sessions = [session]
 
     result = session_exists(socket_path, "test-id")
@@ -171,7 +171,7 @@ def test_set_session_state_sends_message(server, socket_path):
     from hopper.sessions import Session
 
     # Create a session first
-    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    session = Session(id="test-id", stage="ore", created_at=1000, state="new")
     server.sessions = [session]
 
     result = set_session_state(socket_path, "test-id", "running", "Claude running")
@@ -230,7 +230,7 @@ class TestHopperConnection:
         from hopper.sessions import Session
 
         # Create a session
-        session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+        session = Session(id="test-id", stage="ore", created_at=1000, state="new")
         server.sessions = [session]
 
         conn = HopperConnection(socket_path)
