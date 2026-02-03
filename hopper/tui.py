@@ -13,7 +13,7 @@ from textual.theme import Theme
 from textual.widgets import Button, DataTable, Footer, Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
-from hopper.backlog import BacklogItem, remove_backlog_item
+from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item
 from hopper.claude import spawn_claude, switch_to_window
 from hopper.projects import Project, find_project, get_active_projects
 from hopper.sessions import (
@@ -51,7 +51,10 @@ STATUS_RUNNING = "●"  # filled circle
 STATUS_STUCK = "◐"  # half-filled circle
 STATUS_NEW = "○"  # empty circle
 STATUS_ERROR = "✗"  # x mark
-STATUS_ACTION = "+"  # plus for action rows
+
+# Hint row keys (always present at bottom of each table)
+HINT_SESSION = "_hint_session"
+HINT_BACKLOG = "_hint_backlog"
 
 # Stage indicators
 STAGE_ORE = "⚒"  # hammer and pick
@@ -111,8 +114,6 @@ def format_status_text(status: str) -> Text:
         return Text(status, style="bright_yellow")
     elif status == STATUS_ERROR:
         return Text(status, style="bright_red")
-    elif status == STATUS_ACTION:
-        return Text(status, style="bright_magenta")
     else:  # STATUS_NEW
         return Text(status, style="bright_black")
 
@@ -177,13 +178,14 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
     }
     """
 
-    def __init__(self, projects: list[Project]):
+    def __init__(self, projects: list[Project], title: str = "Select Project"):
         super().__init__()
         self._projects = projects
+        self._picker_title = title
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker-container"):
-            yield Static("New Session", id="picker-title")
+            yield Static(self._picker_title, id="picker-title")
             options = [Option(p.name, id=p.name) for p in self._projects]
             yield OptionList(*options, id="project-list")
 
@@ -210,19 +212,24 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
         self.query_one("#project-list", OptionList).action_cursor_up()
 
 
-class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
-    """Modal screen for entering task scope and spawn mode."""
+class TextInputScreen(ModalScreen):
+    """Base modal screen with a title, TextArea, and action buttons.
+
+    Subclasses must define MODAL_TITLE, compose_buttons(), and on_submit().
+    """
+
+    MODAL_TITLE: str = ""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
     ]
 
     CSS = """
-    ScopeInputScreen {
+    TextInputScreen {
         align: center middle;
     }
 
-    #scope-container {
+    .text-input-container {
         width: 70;
         height: auto;
         max-height: 80%;
@@ -231,48 +238,50 @@ class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
         padding: 1 2;
     }
 
-    #scope-title {
+    .text-input-title {
         text-align: center;
         text-style: bold;
         color: $text;
         padding-bottom: 1;
     }
 
-    #scope-input {
+    .text-input-area {
         height: 10;
         margin-bottom: 1;
     }
 
-    #scope-buttons {
+    .text-input-buttons {
         height: auto;
         align: center middle;
     }
 
-    #scope-buttons Button {
+    .text-input-buttons Button {
         margin: 0 1;
     }
 
-    #scope-buttons Button:focus {
+    .text-input-buttons Button:focus {
         text-style: bold reverse;
     }
     """
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="scope-container"):
-            yield Static("Describe Task Scope", id="scope-title")
-            yield TextArea(id="scope-input")
-            with Horizontal(id="scope-buttons"):
-                yield Button("Cancel", id="btn-cancel", variant="default")
-                yield Button("Background", id="btn-background", variant="default")
-                yield Button("Foreground", id="btn-foreground", variant="primary")
+        with Vertical(classes="text-input-container"):
+            yield Static(self.MODAL_TITLE, classes="text-input-title")
+            yield TextArea(classes="text-input-area")
+            with Horizontal(classes="text-input-buttons"):
+                yield from self.compose_buttons()
+
+    def compose_buttons(self) -> ComposeResult:
+        """Yield the action buttons. Subclasses must override."""
+        raise NotImplementedError
 
     def on_mount(self) -> None:
-        self.query_one("#scope-input", TextArea).focus()
+        self.query_one(TextArea).focus()
 
     def on_key(self, event: events.Key) -> None:
         focused = self.focused
-        buttons = list(self.query("#scope-buttons Button"))
-        text_area = self.query_one("#scope-input", TextArea)
+        buttons = list(self.query(".text-input-buttons Button"))
+        text_area = self.query_one(TextArea)
 
         if event.key == "tab" and focused is text_area:
             event.prevent_default()
@@ -306,18 +315,51 @@ class ScopeInputScreen(ModalScreen[tuple[str, bool] | None]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
+    def _get_text(self) -> str:
+        """Get the stripped text from the TextArea."""
+        return self.query_one(TextArea).text.strip()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-cancel":
             self.dismiss(None)
             return
-
-        scope = self.query_one("#scope-input", TextArea).text.strip()
-        if not scope:
-            self.notify("Please enter a task scope", severity="warning")
+        text = self._get_text()
+        if not text:
+            self.notify("Please enter a description", severity="warning")
             return
+        self.on_submit(event.button, text)
 
-        foreground = event.button.id == "btn-foreground"
-        self.dismiss((scope, foreground))
+    def on_submit(self, button: Button, text: str) -> None:
+        """Handle a validated submit. Subclasses must override."""
+        raise NotImplementedError
+
+
+class ScopeInputScreen(TextInputScreen):
+    """Modal screen for entering task scope and spawn mode."""
+
+    MODAL_TITLE = "Describe Task Scope"
+
+    def compose_buttons(self) -> ComposeResult:
+        yield Button("Cancel", id="btn-cancel", variant="default")
+        yield Button("Background", id="btn-background", variant="default")
+        yield Button("Foreground", id="btn-foreground", variant="primary")
+
+    def on_submit(self, button: Button, text: str) -> None:
+        foreground = button.id == "btn-foreground"
+        self.dismiss((text, foreground))
+
+
+class BacklogInputScreen(TextInputScreen):
+    """Modal screen for entering a backlog item description."""
+
+    MODAL_TITLE = "Describe Backlog Item"
+
+    def compose_buttons(self) -> ComposeResult:
+        yield Button("Cancel", id="btn-cancel", variant="default")
+        yield Button("Add", id="btn-add", variant="primary")
+
+    def on_submit(self, button: Button, text: str) -> None:
+        self.dismiss(text)
 
 
 class SessionTable(DataTable):
@@ -385,12 +427,16 @@ class HopperApp(App):
         background: $surface;
     }
 
-    #session-table {
-        height: 1fr;
-        background: $background;
+    .section {
+        border: solid $panel;
+        margin: 0 1;
     }
 
-    #backlog-label {
+    .section:focus-within {
+        border: solid $primary;
+    }
+
+    .section-label {
         height: 1;
         padding: 0 1;
         color: $text-muted;
@@ -398,16 +444,26 @@ class HopperApp(App):
         background: $surface;
     }
 
-    #backlog-table {
-        height: auto;
-        max-height: 40%;
+    #session-panel {
+        height: 1fr;
+        margin-top: 1;
+    }
+
+    #session-table {
+        height: 1fr;
         background: $background;
     }
 
-    #empty-message {
-        height: 3;
-        content-align: center middle;
-        color: $text-muted;
+    #backlog-panel {
+        height: auto;
+        max-height: 40%;
+        margin-bottom: 1;
+    }
+
+    #backlog-table {
+        height: auto;
+        max-height: 100%;
+        background: $background;
     }
 
     DataTable > .datatable--cursor {
@@ -437,8 +493,8 @@ class HopperApp(App):
         Binding("k", "cursor_up", show=False),
         Binding("down", "cursor_down", show=False),
         Binding("up", "cursor_up", show=False),
-        Binding("enter", "select_row", "Select"),
         Binding("c", "new_session", "Create"),
+        Binding("b", "new_backlog", "Backlog"),
         Binding("a", "archive", "Archive"),
         Binding("d", "delete_backlog", "Delete", show=False),
     ]
@@ -456,10 +512,12 @@ class HopperApp(App):
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
         yield Header()
-        yield SessionTable(id="session-table")
-        yield Static("No sessions yet. Press 'c' to create one.", id="empty-message")
-        yield Static("BACKLOG", id="backlog-label")
-        yield BacklogTable(id="backlog-table")
+        with Vertical(id="session-panel", classes="section"):
+            yield Static("sessions", classes="section-label")
+            yield SessionTable(id="session-table")
+        with Vertical(id="backlog-panel", classes="section"):
+            yield Static("backlog", classes="section-label")
+            yield BacklogTable(id="backlog-table")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -498,7 +556,6 @@ class HopperApp(App):
         which would reset cursor position on every refresh.
         """
         table = self.query_one("#session-table", SessionTable)
-        empty_msg = self.query_one("#empty-message", Static)
 
         # Build rows from sessions (ore first, then processing)
         rows: list[Row] = []
@@ -510,19 +567,23 @@ class HopperApp(App):
         for session in processing_sessions:
             rows.append(session_to_row(session))
 
-        # Get current row keys in table
+        # Get current row keys in table (excluding hint row)
         existing_keys: set[str] = set()
         for row_key in table.rows:
-            existing_keys.add(str(row_key.value))
+            key = str(row_key.value)
+            if key != HINT_SESSION:
+                existing_keys.add(key)
 
         # Get desired row keys
         desired_keys = {row.id for row in rows}
+
+        has_hint = HINT_SESSION in {str(k.value) for k in table.rows}
 
         # Remove rows that no longer exist
         for key in existing_keys - desired_keys:
             table.remove_row(key)
 
-        # Add or update rows
+        # Add or update rows (insert before hint row if it exists)
         for row in rows:
             if row.id in existing_keys:
                 # Update existing row cells
@@ -536,7 +597,10 @@ class HopperApp(App):
                     row.id, SessionTable.COL_STATUS_TEXT, self._format_status(row.status_text)
                 )
             else:
-                # Add new row
+                # Add new row (before hint if present)
+                if has_hint:
+                    table.remove_row(HINT_SESSION)
+                    has_hint = False
                 table.add_row(
                     format_status_text(row.status),
                     format_active_text(row.active),
@@ -548,26 +612,26 @@ class HopperApp(App):
                     key=row.id,
                 )
 
-        # Toggle empty message visibility
-        if rows:
-            empty_msg.display = False
-            table.display = True
-        else:
-            empty_msg.display = True
-            table.display = False
+        # Add hint row at the bottom if not already there
+        if not has_hint:
+            hint = Text("c to create new session", style="bright_black italic")
+            table.add_row("", "", "", "", "", "", hint, key=HINT_SESSION)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""
         table = self.query_one("#backlog-table", BacklogTable)
-        label = self.query_one("#backlog-label", Static)
 
         items = self._backlog
 
         existing_keys: set[str] = set()
         for row_key in table.rows:
-            existing_keys.add(str(row_key.value))
+            key = str(row_key.value)
+            if key != HINT_BACKLOG:
+                existing_keys.add(key)
 
         desired_keys = {item.id for item in items}
+
+        has_hint = HINT_BACKLOG in {str(k.value) for k in table.rows}
 
         for key in existing_keys - desired_keys:
             table.remove_row(key)
@@ -579,31 +643,41 @@ class HopperApp(App):
                 table.update_cell(item.id, BacklogTable.COL_DESCRIPTION, item.description)
                 table.update_cell(item.id, BacklogTable.COL_AGE, age)
             else:
+                # Add new row (before hint if present)
+                if has_hint:
+                    table.remove_row(HINT_BACKLOG)
+                    has_hint = False
                 table.add_row(item.project, item.description, age, key=item.id)
 
-        has_items = len(items) > 0
-        label.display = has_items
-        table.display = has_items
+        # Add hint row at the bottom if not already there
+        if not has_hint:
+            hint = Text("b to add to backlog", style="bright_black italic")
+            table.add_row("", hint, "", key=HINT_BACKLOG)
 
     def _format_status(self, status: str) -> str:
         """Format status text for display, replacing newlines with spaces."""
         return status.replace("\n", " ") if status else ""
 
-    def _get_selected_session_id(self) -> str | None:
-        """Get the session ID of the selected row."""
-        table = self.query_one("#session-table", SessionTable)
+    def _get_selected_row_key(self, table: DataTable) -> str | None:
+        """Get the row key of the selected row in a table."""
         if table.cursor_row is not None and table.row_count > 0:
             cell_key = table.coordinate_to_cell_key((table.cursor_row, 0))
             return str(cell_key.row_key.value) if cell_key.row_key else None
         return None
 
+    def _get_selected_session_id(self) -> str | None:
+        """Get the session ID of the selected row (skips hint rows)."""
+        key = self._get_selected_row_key(self.query_one("#session-table", SessionTable))
+        if key and key.startswith("_hint"):
+            return None
+        return key
+
     def _get_selected_backlog_id(self) -> str | None:
-        """Get the backlog item ID of the selected row."""
-        table = self.query_one("#backlog-table", BacklogTable)
-        if table.cursor_row is not None and table.row_count > 0:
-            cell_key = table.coordinate_to_cell_key((table.cursor_row, 0))
-            return str(cell_key.row_key.value) if cell_key.row_key else None
-        return None
+        """Get the backlog item ID of the selected row (skips hint rows)."""
+        key = self._get_selected_row_key(self.query_one("#backlog-table", BacklogTable))
+        if key and key.startswith("_hint"):
+            return None
+        return key
 
     def _get_session(self, session_id: str) -> Session | None:
         """Get a session by ID."""
@@ -623,9 +697,7 @@ class HopperApp(App):
         """Switch focus between session and backlog tables."""
         focused = self.focused
         if isinstance(focused, SessionTable):
-            backlog_table = self.query_one("#backlog-table", BacklogTable)
-            if backlog_table.display:
-                backlog_table.focus()
+            self.query_one("#backlog-table", BacklogTable).focus()
         else:
             self.query_one("#session-table", SessionTable).focus()
 
@@ -637,10 +709,16 @@ class HopperApp(App):
         """Move cursor up in the focused table."""
         self._focused_table().action_cursor_up()
 
-    def action_new_session(self) -> None:
-        """Open project picker, then scope input, to create a new session."""
+    def _require_projects(self) -> bool:
+        """Check that projects are configured. Returns True if available."""
         if not self._projects:
             self.notify("No projects configured. Use: hop project add <path>", severity="warning")
+            return False
+        return True
+
+    def action_new_session(self) -> None:
+        """Open project picker, then scope input, to create a new session."""
+        if not self._require_projects():
             return
 
         def on_project_selected(project: Project | None) -> None:
@@ -662,19 +740,43 @@ class HopperApp(App):
 
         self.push_screen(ProjectPickerScreen(self._projects), on_project_selected)
 
-    def action_select_row(self) -> None:
-        """Handle Enter key on selected row (session table only)."""
-        if not isinstance(self.focused, SessionTable):
+    def action_new_backlog(self) -> None:
+        """Open project picker, then backlog input, to create a new backlog item."""
+        if not self._require_projects():
             return
 
-        session_id = self._get_selected_session_id()
-        if not session_id:
-            self.notify("No session selected", severity="warning")
+        def on_project_selected(project: Project | None) -> None:
+            if project is None:
+                return  # Cancelled
+
+            def on_description_entered(description: str | None) -> None:
+                if description is None:
+                    return  # Cancelled
+                add_backlog_item(self._backlog, project.name, description)
+                self.refresh_backlog()
+
+            self.push_screen(BacklogInputScreen(), on_description_entered)
+
+        self.push_screen(ProjectPickerScreen(self._projects), on_project_selected)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle Enter key on selected row in any table."""
+        key = str(event.row_key.value)
+
+        # Hint row actions
+        if key == HINT_SESSION:
+            self.action_new_session()
+            return
+        if key == HINT_BACKLOG:
+            self.action_new_backlog()
             return
 
-        session = self._get_session(session_id)
+        if not isinstance(event.data_table, SessionTable):
+            return
+
+        session = self._get_session(key)
         if not session:
-            self.notify(f"Session {session_id[:8]} not found", severity="error")
+            self.notify(f"Session {key[:8]} not found", severity="error")
             return
 
         project = find_project(session.project) if session.project else None

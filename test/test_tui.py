@@ -12,6 +12,7 @@ from hopper.tui import (
     STATUS_NEW,
     STATUS_RUNNING,
     STATUS_STUCK,
+    BacklogInputScreen,
     HopperApp,
     ProjectPickerScreen,
     Row,
@@ -226,16 +227,14 @@ async def test_app_starts():
 
 @pytest.mark.asyncio
 async def test_app_with_empty_sessions():
-    """App should display empty message when no sessions."""
+    """App should show hint row when no sessions."""
     server = MockServer([])
     app = HopperApp(server=server)
     async with app.run_test():
         table = app.query_one("#session-table")
-        # Table should be hidden when empty
-        assert table.display is False
-        # Empty message should be visible
-        empty_msg = app.query_one("#empty-message")
-        assert empty_msg.display is True
+        # Table always visible, hint row present
+        assert table.display is True
+        assert table.row_count == 1  # hint row only
 
 
 @pytest.mark.asyncio
@@ -282,8 +281,8 @@ async def test_app_with_sessions():
     app = HopperApp(server=server)
     async with app.run_test():
         table = app.query_one("#session-table")
-        # Unified table: 2 sessions total
-        assert table.row_count == 2
+        # 2 sessions + 1 hint row
+        assert table.row_count == 3
 
 
 @pytest.mark.asyncio
@@ -504,7 +503,7 @@ async def test_scope_input_foreground():
     async with app.run_test() as pilot:
         # Type some text
         screen = app.screen
-        text_area = screen.query_one("#scope-input", TextArea)
+        text_area = screen.query_one(TextArea)
         text_area.insert("Test task scope")
         # Tab to Foreground button (third button)
         await pilot.press("tab")  # Cancel
@@ -523,7 +522,7 @@ async def test_scope_input_background():
     async with app.run_test() as pilot:
         # Type some text
         screen = app.screen
-        text_area = screen.query_one("#scope-input", TextArea)
+        text_area = screen.query_one(TextArea)
         text_area.insert("Test task scope")
         # Tab to Background button (second button)
         await pilot.press("tab")  # Cancel
@@ -612,7 +611,7 @@ async def test_scope_input_arrow_key_select():
     app = ScopeTestApp()
     async with app.run_test() as pilot:
         screen = app.screen
-        text_area = screen.query_one("#scope-input", TextArea)
+        text_area = screen.query_one(TextArea)
         text_area.insert("Arrow test")
         # Tab to Cancel, then right twice to Foreground
         await pilot.press("tab")
@@ -623,24 +622,160 @@ async def test_scope_input_arrow_key_select():
         assert app.scope_result == ("Arrow test", True)
 
 
+# Tests for hint rows
+
+
+@pytest.mark.asyncio
+async def test_hint_row_stays_highlighted():
+    """Cursor should stay on hint row across refresh cycles."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        table = app.query_one("#session-table")
+        # Move to hint row (row 1, after the one session)
+        await pilot.press("j")
+        assert table.cursor_row == 1
+        # Simulate polling refresh
+        app.refresh_table()
+        # Cursor should still be on hint row
+        assert table.cursor_row == 1
+
+
+@pytest.mark.asyncio
+async def test_enter_on_session_hint_triggers_new_session():
+    """Enter on session hint row should trigger new session action."""
+    sessions = [
+        Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        called = []
+        app.action_new_session = lambda: called.append(True)
+        # Move to hint row and press enter
+        await pilot.press("j")
+        await pilot.press("enter")
+        assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_enter_on_backlog_hint_triggers_new_backlog():
+    """Enter on backlog hint row should trigger new backlog action."""
+    from hopper.backlog import BacklogItem
+
+    items = [
+        BacklogItem(id="bl-1111-uuid", project="proj", description="Item", created_at=1000),
+    ]
+    server = MockServer([], backlog=items)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        called = []
+        app.action_new_backlog = lambda: called.append(True)
+        # Switch to backlog, move to hint row
+        await pilot.press("tab")
+        await pilot.press("j")
+        await pilot.press("enter")
+        assert len(called) == 1
+
+
+# Tests for BacklogInputScreen
+
+
+class BacklogInputTestApp(App):
+    """Test app wrapper for BacklogInputScreen."""
+
+    def __init__(self):
+        super().__init__()
+        self.backlog_result = "not_set"  # sentinel value
+
+    def on_mount(self) -> None:
+        def capture_result(r):
+            self.backlog_result = r
+
+        self.push_screen(BacklogInputScreen(), capture_result)
+
+
+@pytest.mark.asyncio
+async def test_backlog_input_cancel_escape():
+    """Escape should dismiss the backlog input with None result."""
+    app = BacklogInputTestApp()
+    async with app.run_test() as pilot:
+        await pilot.press("escape")
+        assert app.backlog_result is None
+
+
+@pytest.mark.asyncio
+async def test_backlog_input_cancel_button():
+    """Cancel button should dismiss the backlog input with None result."""
+    app = BacklogInputTestApp()
+    async with app.run_test() as pilot:
+        await pilot.press("tab")
+        await pilot.press("enter")
+        assert app.backlog_result is None
+
+
+@pytest.mark.asyncio
+async def test_backlog_input_add():
+    """Add button should return the description text."""
+    from textual.widgets import TextArea
+
+    app = BacklogInputTestApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        text_area = screen.query_one(TextArea)
+        text_area.insert("Fix the login bug")
+        # Tab to Add button (second button after Cancel)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Add
+        await pilot.press("enter")
+        assert app.backlog_result == "Fix the login bug"
+
+
+@pytest.mark.asyncio
+async def test_backlog_input_empty_validation():
+    """Empty description should not submit."""
+    app = BacklogInputTestApp()
+    async with app.run_test() as pilot:
+        # Tab to Add button without typing anything
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Add
+        await pilot.press("enter")
+        assert app.backlog_result == "not_set"
+
+
+@pytest.mark.asyncio
+async def test_backlog_input_arrow_navigation():
+    """Arrow keys should navigate between buttons."""
+    app = BacklogInputTestApp()
+    async with app.run_test() as pilot:
+        await pilot.press("tab")
+        assert app.screen.focused.id == "btn-cancel"
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-add"
+        await pilot.press("right")  # wraps
+        assert app.screen.focused.id == "btn-cancel"
+
+
 # Tests for BacklogTable
 
 
 @pytest.mark.asyncio
-async def test_backlog_hidden_when_empty():
-    """Backlog label and table should be hidden when no items."""
+async def test_backlog_shows_hint_when_empty():
+    """Backlog should show hint row when no items."""
     server = MockServer([])
     app = HopperApp(server=server)
     async with app.run_test():
-        label = app.query_one("#backlog-label")
         table = app.query_one("#backlog-table")
-        assert label.display is False
-        assert table.display is False
+        assert table.display is True
+        assert table.row_count == 1  # hint row only
 
 
 @pytest.mark.asyncio
 async def test_backlog_shown_with_items():
-    """Backlog table should display when items exist."""
+    """Backlog table should display items plus hint row."""
     from hopper.backlog import BacklogItem
 
     items = [
@@ -652,11 +787,10 @@ async def test_backlog_shown_with_items():
     server = MockServer([], backlog=items)
     app = HopperApp(server=server)
     async with app.run_test():
-        label = app.query_one("#backlog-label")
         table = app.query_one("#backlog-table")
-        assert label.display is True
         assert table.display is True
-        assert table.row_count == 2
+        # 2 items + 1 hint row
+        assert table.row_count == 3
 
 
 @pytest.mark.asyncio
@@ -685,9 +819,9 @@ async def test_tab_switches_focus_to_backlog():
 
 
 @pytest.mark.asyncio
-async def test_tab_stays_on_sessions_when_backlog_empty():
-    """Tab should stay on session table when backlog is empty."""
-    from hopper.tui import SessionTable
+async def test_tab_switches_to_backlog_even_when_empty():
+    """Tab should switch to backlog table even when it has no items (hint row visible)."""
+    from hopper.tui import BacklogTable, SessionTable
 
     sessions = [
         Session(id="aaaa1111-uuid", stage="ore", created_at=1000),
@@ -697,8 +831,8 @@ async def test_tab_stays_on_sessions_when_backlog_empty():
     async with app.run_test() as pilot:
         assert isinstance(app.focused, SessionTable)
         await pilot.press("tab")
-        # Should stay on session table since backlog is hidden
-        assert isinstance(app.focused, SessionTable)
+        # Backlog is always visible, so Tab switches to it
+        assert isinstance(app.focused, BacklogTable)
 
 
 @pytest.mark.asyncio
@@ -740,10 +874,10 @@ async def test_delete_backlog_item(temp_config):
         # Switch to backlog table
         await pilot.press("tab")
         table = app.query_one("#backlog-table", BacklogTable)
-        assert table.row_count == 2
+        assert table.row_count == 3  # 2 items + hint
         # Delete first item
         await pilot.press("d")
-        assert table.row_count == 1
+        assert table.row_count == 2  # 1 item + hint
         assert len(app._backlog) == 1
         assert app._backlog[0].id == "bl-2222-uuid"
 
@@ -764,8 +898,8 @@ async def test_delete_noop_on_session_table():
     async with app.run_test() as pilot:
         # Focus is on session table by default
         session_table = app.query_one("#session-table")
-        assert session_table.row_count == 1
+        assert session_table.row_count == 2  # 1 session + hint
         # Press d - should not delete session or backlog item
         await pilot.press("d")
-        assert session_table.row_count == 1
+        assert session_table.row_count == 2  # unchanged
         assert len(app._backlog) == 1
