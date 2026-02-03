@@ -29,10 +29,15 @@ class HopperConnection:
         self.socket_path = socket_path
         self.send_queue: queue.Queue = queue.Queue(maxsize=1000)
         self.callback: Callable[[dict[str, Any]], Any] | None = None
+        self.on_connect: Callable[[], Any] | None = None
         self.thread: threading.Thread | None = None
         self.stop_event = threading.Event()
 
-    def start(self, callback: Callable[[dict[str, Any]], Any] | None = None) -> None:
+    def start(
+        self,
+        callback: Callable[[dict[str, Any]], Any] | None = None,
+        on_connect: Callable[[], Any] | None = None,
+    ) -> None:
         """Start background thread for sending and receiving.
 
         Thread will auto-connect with retry and drain the send queue even when
@@ -40,11 +45,14 @@ class HopperConnection:
 
         Args:
             callback: Optional function to process received messages
+            on_connect: Optional function called on each successful connection
+                (initial and reconnects). Runs on the background thread.
         """
         if self.thread and self.thread.is_alive():
             return  # Already started
 
         self.callback = callback
+        self.on_connect = on_connect
         self.stop_event.clear()
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
@@ -63,6 +71,11 @@ class HopperConnection:
                     sock.connect(str(self.socket_path))
                     sock.settimeout(0.1)  # Short timeout for responsive queue draining
                     logger.debug(f"Connected to {self.socket_path}")
+                    if self.on_connect:
+                        try:
+                            self.on_connect()
+                        except Exception as e:
+                            logger.error(f"on_connect callback failed: {e}")
                 except Exception as e:
                     logger.debug(f"Connection attempt failed: {e}")
                     if sock:

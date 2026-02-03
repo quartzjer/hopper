@@ -318,6 +318,64 @@ class TestHopperConnection:
         srv2.stop()
         thread2.join(timeout=2)
 
+    def test_on_connect_fires_on_initial_connect(self, socket_path, server):
+        """on_connect callback fires when first connection is established."""
+        calls = []
+        conn = HopperConnection(socket_path)
+        conn.start(on_connect=lambda: calls.append(1))
+
+        # Give time to connect
+        time.sleep(0.3)
+
+        conn.stop()
+
+        assert len(calls) == 1
+
+    def test_on_connect_fires_on_reconnect(self, socket_path):
+        """on_connect callback fires on both initial connect and reconnect."""
+        calls = []
+
+        # Start first server
+        srv1 = Server(socket_path)
+        thread1 = threading.Thread(target=srv1.start, daemon=True)
+        thread1.start()
+
+        for _ in range(50):
+            if socket_path.exists():
+                break
+            time.sleep(0.1)
+
+        conn = HopperConnection(socket_path)
+        conn.start(on_connect=lambda: calls.append(1))
+
+        # Give time to connect
+        time.sleep(0.3)
+
+        assert len(calls) == 1
+
+        # Stop first server
+        srv1.stop()
+        thread1.join(timeout=2)
+
+        # Start second server
+        srv2 = Server(socket_path)
+        thread2 = threading.Thread(target=srv2.start, daemon=True)
+        thread2.start()
+
+        for _ in range(50):
+            if socket_path.exists():
+                break
+            time.sleep(0.1)
+
+        # Give time to reconnect (reconnect rate is 1/sec)
+        time.sleep(1.5)
+
+        assert len(calls) == 2
+
+        conn.stop()
+        srv2.stop()
+        thread2.join(timeout=2)
+
     def test_drops_messages_when_disconnected(self, socket_path):
         """Messages are dropped when not connected (no server)."""
         conn = HopperConnection(socket_path)

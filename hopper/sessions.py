@@ -163,7 +163,7 @@ class Session:
             state=data["state"],
             status=data.get("status", ""),
             active=data.get("active", False),  # Backwards compat
-            tmux_pane=data.get("tmux_pane") or data.get("tmux_window"),  # Backwards compat
+            tmux_pane=data.get("tmux_pane"),
         )
 
 

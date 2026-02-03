@@ -187,7 +187,9 @@ class Server:
         logger.debug(f"Session {session_id[:8]} disconnected, active=False")
         self.broadcast({"type": "session_updated", "session": session.to_dict()})
 
-    def _register_session_client(self, session_id: str, conn: socket.socket) -> None:
+    def _register_session_client(
+        self, session_id: str, conn: socket.socket, tmux_pane: str | None = None
+    ) -> None:
         """Register a client as owning a session.
 
         Sets active=True on the session and disconnects any stale owner.
@@ -214,6 +216,8 @@ class Server:
         session = next((s for s in self.sessions if s.id == session_id), None)
         if session:
             session.active = True
+            if tmux_pane:
+                session.tmux_pane = tmux_pane
             session.touch()
             save_sessions(self.sessions)
             self.broadcast({"type": "session_updated", "session": session.to_dict()})
@@ -244,7 +248,8 @@ class Server:
             if session_id:
                 session = next((s for s in self.sessions if s.id == session_id), None)
                 if session:
-                    self._register_session_client(session_id, conn)
+                    tmux_pane = message.get("tmux_pane")
+                    self._register_session_client(session_id, conn, tmux_pane)
 
         elif msg_type == "ping":
             self._send_response(conn, {"type": "pong"})

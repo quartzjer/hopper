@@ -119,8 +119,14 @@ class BaseRunner:
 
             # Start persistent connection and register ownership
             self.connection = HopperConnection(self.socket_path)
-            self.connection.start(callback=self._on_server_message)
-            self.connection.emit("session_register", session_id=self.session_id)
+            self.connection.start(
+                callback=self._on_server_message,
+                on_connect=lambda: self.connection.emit(
+                    "session_register",
+                    session_id=self.session_id,
+                    tmux_pane=get_current_pane_id(),
+                ),
+            )
 
             # Run Claude (blocking)
             exit_code, error_msg = self._run_claude()

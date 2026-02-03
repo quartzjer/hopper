@@ -22,7 +22,6 @@ from hopper.sessions import (
     create_session,
     format_age,
     format_uptime,
-    save_sessions,
 )
 
 # Claude Code-inspired theme
@@ -60,6 +59,14 @@ HINT_BACKLOG = "_hint_backlog"
 STAGE_ORE = "⚒"  # hammer and pick
 STAGE_PROCESSING = "⛭"  # gear
 STAGE_SHIP = "▲"  # triangle up
+
+# Status -> color mapping (shared by icon and text formatting)
+STATUS_COLORS = {
+    STATUS_RUNNING: "bright_green",
+    STATUS_STUCK: "bright_yellow",
+    STATUS_ERROR: "bright_red",
+    STATUS_NEW: "bright_black",
+}
 
 
 @dataclass
@@ -149,6 +156,7 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
     CSS = """
     ProjectPickerScreen {
         align: center middle;
+        height: 100%;
     }
 
     #picker-container {
@@ -171,10 +179,7 @@ class ProjectPickerScreen(ModalScreen[Project | None]):
         height: auto;
         max-height: 20;
         background: $surface;
-    }
-
-    #project-list > .option-list--option-highlighted {
-        background: $panel;
+        border: none;
     }
     """
 
@@ -218,6 +223,7 @@ class TextInputScreen(ModalScreen):
     Subclasses must define MODAL_TITLE, compose_buttons(), and on_submit().
     """
 
+    SCOPED_CSS = False
     MODAL_TITLE: str = ""
 
     BINDINGS = [
@@ -227,6 +233,7 @@ class TextInputScreen(ModalScreen):
     CSS = """
     TextInputScreen {
         align: center middle;
+        height: 100%;
     }
 
     .text-input-container {
@@ -281,27 +288,8 @@ class TextInputScreen(ModalScreen):
     def on_key(self, event: events.Key) -> None:
         focused = self.focused
         buttons = list(self.query(".text-input-buttons Button"))
-        text_area = self.query_one(TextArea)
 
-        if event.key == "tab" and focused is text_area:
-            event.prevent_default()
-            event.stop()
-            buttons[0].focus()
-        elif event.key == "shift+tab" and focused in buttons:
-            event.prevent_default()
-            event.stop()
-            idx = buttons.index(focused)
-            if idx == 0:
-                text_area.focus()
-            else:
-                buttons[idx - 1].focus()
-        elif event.key == "tab" and focused in buttons:
-            event.prevent_default()
-            event.stop()
-            idx = buttons.index(focused)
-            if idx < len(buttons) - 1:
-                buttons[idx + 1].focus()
-        elif event.key == "right" and focused in buttons:
+        if event.key == "right" and focused in buttons:
             event.prevent_default()
             event.stop()
             idx = buttons.index(focused)
@@ -372,6 +360,7 @@ class LegendScreen(ModalScreen):
     CSS = """
     LegendScreen {
         align: center middle;
+        height: 100%;
     }
 
     #legend-container {
@@ -456,7 +445,7 @@ class SessionTable(DataTable):
     COL_STATUS_TEXT = "status_text"
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(cursor_foreground_priority="renderable", **kwargs)
         self.cursor_type = "row"
 
     def on_mount(self) -> None:
@@ -478,7 +467,7 @@ class BacklogTable(DataTable):
     COL_AGE = "age"
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(cursor_foreground_priority="renderable", **kwargs)
         self.cursor_type = "row"
 
     def on_mount(self) -> None:
@@ -677,7 +666,7 @@ class HopperApp(App):
                 table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, SessionTable.COL_AGE, row.age)
                 table.update_cell(
-                    row.id, SessionTable.COL_STATUS_TEXT, self._format_status(row.status_text)
+                    row.id, SessionTable.COL_STATUS_TEXT, self._format_status(row.status_text, row.status)
                 )
             else:
                 # Add new row (before hint if present)
@@ -691,7 +680,7 @@ class HopperApp(App):
                     row.short_id,
                     row.project,
                     row.age,
-                    self._format_status(row.status_text),
+                    self._format_status(row.status_text, row.status),
                     key=row.id,
                 )
 
@@ -737,9 +726,16 @@ class HopperApp(App):
             hint = Text("b to add to backlog", style="bright_black italic")
             table.add_row("", hint, "", key=HINT_BACKLOG)
 
-    def _format_status(self, status: str) -> str:
-        """Format status text for display, replacing newlines with spaces."""
-        return status.replace("\n", " ") if status else ""
+    def _format_status(self, status_text: str, status: str) -> Text:
+        """Format status text for display with color matching the status icon."""
+        label = status_text.replace("\n", " ") if status_text else ""
+        if status == STATUS_RUNNING:
+            return Text(label, style="bright_green")
+        elif status == STATUS_STUCK:
+            return Text(label, style="bright_yellow")
+        elif status == STATUS_ERROR:
+            return Text(label, style="bright_red")
+        return Text(label)
 
     def _get_selected_row_key(self, table: DataTable) -> str | None:
         """Get the row key of the selected row in a table."""
@@ -813,10 +809,7 @@ class HopperApp(App):
                     return  # Cancelled
                 scope, foreground = result
                 session = create_session(self._sessions, project.name, scope)
-                pane_id = spawn_claude(session.id, project.path, foreground)
-                if pane_id:
-                    session.tmux_pane = pane_id
-                    save_sessions(self._sessions)
+                spawn_claude(session.id, project.path, foreground)
                 self.refresh_table()
 
             self.push_screen(ScopeInputScreen(), on_scope_entered)
@@ -876,11 +869,7 @@ class HopperApp(App):
                 self.notify("Failed to switch to window", severity="error")
         else:
             # Session is not active - spawn runner based on stage
-            pane_id = spawn_claude(session.id, project_path, stage=session.stage)
-            if pane_id:
-                session.tmux_pane = pane_id
-                save_sessions(self._sessions)
-            else:
+            if not spawn_claude(session.id, project_path, stage=session.stage):
                 self.notify("Failed to spawn tmux window", severity="error")
 
         self.refresh_table()
