@@ -50,12 +50,12 @@ STATUS_RUNNING = "●"  # filled circle
 STATUS_STUCK = "◐"  # half-filled circle
 STATUS_NEW = "○"  # empty circle
 STATUS_ERROR = "✗"  # x mark
-STATUS_READY = "◆"  # filled diamond
 STATUS_ACTION = "+"  # plus for action rows
 
 # Stage indicators
 STAGE_ORE = "⚒"  # hammer and pick
 STAGE_PROCESSING = "⛭"  # gear
+STAGE_SHIP = "▲"  # triangle up
 
 
 @dataclass
@@ -66,7 +66,7 @@ class Row:
     short_id: str
     stage: str  # STAGE_ORE or STAGE_PROCESSING
     age: str  # formatted age string
-    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_READY
+    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
     active: bool = False  # Whether hop ore is connected
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
@@ -74,18 +74,21 @@ class Row:
 
 def session_to_row(session: Session) -> Row:
     """Convert a session to a display row."""
-    if session.state == "error":
+    if session.state == "new":
+        status = STATUS_NEW
+    elif session.state == "error":
         status = STATUS_ERROR
     elif session.state == "stuck":
         status = STATUS_STUCK
-    elif session.state == "running" or session.state == "completed":
-        status = STATUS_RUNNING
-    elif session.state == "ready":
-        status = STATUS_READY
     else:
-        status = STATUS_NEW
+        status = STATUS_RUNNING
 
-    stage = STAGE_ORE if session.stage == "ore" else STAGE_PROCESSING
+    if session.stage == "ore":
+        stage = STAGE_ORE
+    elif session.stage == "ship":
+        stage = STAGE_SHIP
+    else:
+        stage = STAGE_PROCESSING
 
     return Row(
         id=session.id,
@@ -107,8 +110,6 @@ def format_status_text(status: str) -> Text:
         return Text(status, style="bright_yellow")
     elif status == STATUS_ERROR:
         return Text(status, style="bright_red")
-    elif status == STATUS_READY:
-        return Text(status, style="bright_cyan")
     elif status == STATUS_ACTION:
         return Text(status, style="bright_magenta")
     else:  # STATUS_NEW
@@ -127,6 +128,8 @@ def format_stage_text(stage: str) -> Text:
     """Format a stage indicator with color using Rich Text."""
     if stage == STAGE_ORE:
         return Text(stage, style="bright_blue")
+    elif stage == STAGE_SHIP:
+        return Text(stage, style="bright_green")
     else:  # STAGE_PROCESSING
         return Text(stage, style="bright_yellow")
 

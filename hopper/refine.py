@@ -4,7 +4,6 @@ import logging
 import os
 import signal
 import subprocess
-import sys
 import threading
 from pathlib import Path
 
@@ -12,44 +11,16 @@ from hopper import prompt
 from hopper.client import HopperConnection, connect
 from hopper.git import create_worktree
 from hopper.projects import find_project
-from hopper.sessions import SHORT_ID_LEN, current_time_ms, get_session_dir
-from hopper.tmux import capture_pane, get_current_window_id
+from hopper.runner import BaseRunner, extract_error_message
+from hopper.sessions import SHORT_ID_LEN, get_session_dir
 
 logger = logging.getLogger(__name__)
 
-ERROR_LINES = 5
-MONITOR_INTERVAL = 5.0
-MONITOR_INTERVAL_MS = int(MONITOR_INTERVAL * 1000)
 
-
-def _extract_error_message(stderr_bytes: bytes) -> str | None:
-    """Extract last N lines from stderr as error message."""
-    if not stderr_bytes:
-        return None
-    text = stderr_bytes.decode("utf-8", errors="replace")
-    lines = text.strip().splitlines()
-    if not lines:
-        return None
-    tail = lines[-ERROR_LINES:]
-    return "\n".join(tail)
-
-
-class RefineRunner:
+class RefineRunner(BaseRunner):
     """Runs Claude for a processing-stage session with git worktree."""
 
-    def __init__(self, session_id: str, socket_path: Path):
-        self.session_id = session_id
-        self.socket_path = socket_path
-        self.connection: HopperConnection | None = None
-        self.is_first_run = False
-        self.project_name: str = ""
-        self.project_dir: str = ""
-        # Activity monitor state
-        self._monitor_thread: threading.Thread | None = None
-        self._monitor_stop = threading.Event()
-        self._last_snapshot: str | None = None
-        self._stuck_since: int | None = None
-        self._window_id: str | None = None
+    _done_label = "Refine done"
 
     def run(self) -> int:
         """Run Claude for this session. Returns exit code."""
@@ -105,7 +76,7 @@ class RefineRunner:
 
             # Start persistent connection and register
             self.connection = HopperConnection(self.socket_path)
-            self.connection.start()
+            self.connection.start(callback=self._on_server_message)
             self.connection.emit("session_register", session_id=self.session_id)
 
             # Run Claude
@@ -116,6 +87,9 @@ class RefineRunner:
             elif exit_code != 0 and exit_code != 130:
                 msg = error_msg or f"Exited with code {exit_code}"
                 self._emit_state("error", msg)
+            elif exit_code == 0 and self._done.is_set():
+                self._emit_state("ready", "Refine complete")
+                self._emit_stage("ship")
 
             return exit_code
 
@@ -125,24 +99,6 @@ class RefineRunner:
             signal.signal(signal.SIGTERM, original_sigterm)
             if self.connection:
                 self.connection.stop()
-
-    def _handle_signal(self, signum: int, frame) -> None:
-        """Handle shutdown signals gracefully."""
-        logger.debug(f"Received signal {signum}")
-        if signum == signal.SIGINT:
-            raise KeyboardInterrupt
-        sys.exit(128 + signum)
-
-    def _emit_state(self, state: str, status: str) -> None:
-        """Emit state change to server."""
-        if self.connection:
-            self.connection.emit(
-                "session_set_state",
-                session_id=self.session_id,
-                state=state,
-                status=status,
-            )
-            logger.debug(f"Emitted state: {state}, status: {status}")
 
     def _run_claude(
         self, worktree_path: Path, shovel_content: str | None
@@ -165,16 +121,29 @@ class RefineRunner:
         logger.debug(f"Running: {' '.join(cmd[:3])}...")
 
         try:
-            proc = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE, cwd=str(worktree_path))
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stderr=subprocess.PIPE,
+                cwd=str(worktree_path),
+            )
 
             self._emit_state("running", "Claude running")
             self._start_monitor()
+
+            # Start dismiss thread to auto-exit after refine completes
+            if self._window_id:
+                threading.Thread(
+                    target=self._wait_and_dismiss_claude,
+                    name="refine-dismiss",
+                    daemon=True,
+                ).start()
 
             proc.wait()
 
             if proc.returncode != 0 and proc.stderr:
                 stderr_bytes = proc.stderr.read()
-                error_msg = _extract_error_message(stderr_bytes)
+                error_msg = extract_error_message(stderr_bytes)
                 return proc.returncode, error_msg
 
             return proc.returncode, None
@@ -183,55 +152,6 @@ class RefineRunner:
             return 127, "claude command not found"
         except KeyboardInterrupt:
             return 130, None
-
-    def _start_monitor(self) -> None:
-        """Start the activity monitor thread."""
-        self._window_id = get_current_window_id()
-        if not self._window_id:
-            logger.debug("Not in tmux, skipping activity monitor")
-            return
-
-        self._monitor_stop.clear()
-        self._monitor_thread = threading.Thread(
-            target=self._monitor_loop, name="activity-monitor", daemon=True
-        )
-        self._monitor_thread.start()
-        logger.debug(f"Started activity monitor for window {self._window_id}")
-
-    def _stop_monitor(self) -> None:
-        """Stop the activity monitor thread."""
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            self._monitor_stop.set()
-            self._monitor_thread.join(timeout=1.0)
-            logger.debug("Stopped activity monitor")
-
-    def _monitor_loop(self) -> None:
-        """Monitor loop that checks for activity."""
-        while not self._monitor_stop.wait(MONITOR_INTERVAL):
-            self._check_activity()
-
-    def _check_activity(self) -> None:
-        """Check tmux pane for activity and update state."""
-        if not self._window_id:
-            return
-
-        snapshot = capture_pane(self._window_id)
-        if snapshot is None:
-            logger.debug("Failed to capture pane, stopping monitor")
-            self._monitor_stop.set()
-            return
-
-        if snapshot == self._last_snapshot:
-            now = current_time_ms()
-            if self._stuck_since is None:
-                self._stuck_since = now - MONITOR_INTERVAL_MS
-            duration_sec = (now - self._stuck_since) // 1000
-            self._emit_state("stuck", f"No output for {duration_sec}s")
-        else:
-            if self._stuck_since is not None:
-                self._emit_state("running", "Claude running")
-            self._stuck_since = None
-            self._last_snapshot = snapshot
 
 
 def run_refine(session_id: str, socket_path: Path) -> int:

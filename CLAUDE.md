@@ -8,8 +8,8 @@ Hopper manages multiple Claude Code sessions through a terminal interface. It ru
 
 ## Key Concepts
 
-- **Session** - A Claude Code instance with unique ID, workflow stage, state (new/running/stuck/error/completed/ready), active flag (hop ore connected), and associated tmux window
-- **Stage** - Workflow position: "ore" (new/unprocessed) or "processing" (in progress)
+- **Session** - A Claude Code instance with unique ID, workflow stage, freeform state (new/running/stuck/error/completed/ready/task names), active flag (hop ore connected), and associated tmux window
+- **Stage** - Workflow position: "ore" (new/unprocessed), "processing" (in progress), or "ship" (complete)
 - **Backlog** - Future work items with project and description, stored in `backlog.jsonl`
 - **Server** - Background Unix socket server (JSONL protocol) that persists sessions and backlog, broadcasts changes. Manages `active` flag and `tmux_window` on client connect/disconnect; state/status are client-driven via messages.
 - **TUI** - Terminal interface built with `Textual` for viewing and managing sessions and backlog
@@ -41,7 +41,10 @@ CLI (hop up)
 - `tui.py` - Textual App with `HopperApp` class, SessionTable, BacklogTable, and action handlers
 - `sessions.py` - Session dataclass, load/save/create/archive
 - `backlog.py` - BacklogItem dataclass, load/save/add/remove
-- `ore.py` - `OreRunner` wraps Claude execution with session lifecycle management
+- `runner.py` - `BaseRunner` shared logic for ore and refine runners
+- `ore.py` - `OreRunner` wraps Claude execution for ore stage
+- `refine.py` - `RefineRunner` wraps Claude execution for processing stage (git worktree)
+- `git.py` - Git utilities (worktree creation)
 - `tmux.py` - Window creation, selection, session listing
 - `claude.py` - Spawning Claude Code with session ID
 

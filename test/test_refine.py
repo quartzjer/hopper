@@ -55,7 +55,7 @@ class TestRefineRunner:
             patch("hopper.refine.create_worktree", return_value=True) as mock_wt,
             patch("hopper.refine.prompt.load", return_value="loaded prompt") as mock_load,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -106,7 +106,7 @@ class TestRefineRunner:
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree") as mock_wt,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -225,7 +225,7 @@ class TestRefineRunner:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -261,7 +261,7 @@ class TestRefineRunner:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -289,7 +289,7 @@ class TestRefineRunner:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -324,7 +324,7 @@ class TestRefineRunner:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -355,7 +355,7 @@ class TestRefineRunner:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -396,50 +396,112 @@ class TestRunRefine:
             patch("hopper.refine.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.refine.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = run_refine("test-id", Path("/tmp/test.sock"))
 
         assert exit_code == 0
 
 
-class TestActivityMonitor:
-    def test_check_activity_detects_stuck(self):
-        """Monitor detects stuck state when pane content doesn't change."""
-        runner = RefineRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
+class TestRefineCompletion:
+    """Tests for the refine completion and stage transition."""
 
+    def test_clean_exit_after_refine_emits_ready_and_ship(self, tmp_path):
+        """Runner emits state=ready then stage=ship after clean refine exit."""
+        runner = RefineRunner("test-session", Path("/tmp/test.sock"))
         emitted = []
+
+        project_dir = tmp_path / "my-project"
+        project_dir.mkdir()
+
+        session_dir = tmp_path / "sessions" / "test-session"
+        worktree = session_dir / "worktree"
+        worktree.mkdir(parents=True)
+        (session_dir / "shovel.md").write_text("Build it")
+
+        mock_project = MagicMock()
+        mock_project.path = str(project_dir)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stderr = None
+
         mock_conn = MagicMock()
         mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
 
-        runner._last_snapshot = "Hello World"
+        with (
+            patch(
+                "hopper.refine.connect",
+                return_value={
+                    "type": "connected",
+                    "tmux": None,
+                    "session": {"state": "ready", "project": "my-project"},
+                    "session_found": True,
+                },
+            ),
+            patch("hopper.refine.HopperConnection", return_value=mock_conn),
+            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.create_worktree", return_value=True),
+            patch("hopper.refine.prompt.load", return_value="prompt"),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("hopper.runner.get_current_window_id", return_value=None),
+        ):
+            runner._done.set()
+            exit_code = runner.run()
 
-        with patch("hopper.refine.capture_pane", return_value="Hello World"):
-            runner._check_activity()
+        assert exit_code == 0
+        state_idx = next(
+            i
+            for i, e in enumerate(emitted)
+            if e[0] == "session_set_state" and e[1]["state"] == "ready"
+        )
+        stage_idx = next(
+            i for i, e in enumerate(emitted) if e[0] == "session_update" and e[1]["stage"] == "ship"
+        )
+        assert state_idx < stage_idx
+        assert "Refine complete" in emitted[state_idx][1]["status"]
 
-        assert runner._stuck_since is not None
-        stuck_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "stuck"
-        ]
-        assert len(stuck_emissions) == 1
-
-    def test_check_activity_recovers_from_stuck(self):
-        """Monitor emits running when recovering from stuck state."""
+    def test_clean_exit_without_refine_done_no_stage_transition(self, tmp_path):
+        """Runner does NOT emit stage transition if refine was not completed."""
         runner = RefineRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-
         emitted = []
+
+        project_dir = tmp_path / "my-project"
+        project_dir.mkdir()
+
+        session_dir = tmp_path / "sessions" / "test-session"
+        worktree = session_dir / "worktree"
+        worktree.mkdir(parents=True)
+
+        mock_project = MagicMock()
+        mock_project.path = str(project_dir)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stderr = None
+
         mock_conn = MagicMock()
         mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
 
-        runner._last_snapshot = "Hello World"
-        runner._stuck_since = 1000
+        with (
+            patch(
+                "hopper.refine.connect",
+                return_value={
+                    "type": "connected",
+                    "tmux": None,
+                    "session": {"state": "running", "project": "my-project"},
+                    "session_found": True,
+                },
+            ),
+            patch("hopper.refine.HopperConnection", return_value=mock_conn),
+            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("hopper.runner.get_current_window_id", return_value=None),
+        ):
+            exit_code = runner.run()
 
-        with patch("hopper.refine.capture_pane", return_value="New content"):
-            runner._check_activity()
-
-        assert runner._stuck_since is None
-        assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
+        assert exit_code == 0
+        assert not any(e[0] == "session_update" for e in emitted)
+        assert not any(e[0] == "session_set_state" and e[1]["state"] == "ready" for e in emitted)

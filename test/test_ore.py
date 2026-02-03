@@ -4,48 +4,7 @@ import io
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from hopper.ore import OreRunner, _extract_error_message, run_ore
-
-
-class TestExtractErrorMessage:
-    def test_empty_bytes_returns_none(self):
-        """Empty stderr returns None."""
-        assert _extract_error_message(b"") is None
-
-    def test_single_line(self):
-        """Single line is returned as-is."""
-        assert _extract_error_message(b"Error: something broke\n") == "Error: something broke"
-
-    def test_multiple_lines_under_limit(self):
-        """Lines under the limit are all returned."""
-        stderr = b"line1\nline2\nline3\n"
-        result = _extract_error_message(stderr)
-        assert result == "line1\nline2\nline3"
-
-    def test_multiple_lines_over_limit(self):
-        """Only last 5 lines are returned when over limit."""
-        stderr = b"line1\nline2\nline3\nline4\nline5\nline6\nline7\n"
-        result = _extract_error_message(stderr)
-        assert result == "line3\nline4\nline5\nline6\nline7"
-
-    def test_preserves_newlines(self):
-        """Newlines are preserved in output."""
-        stderr = b"error on\nmultiple lines\n"
-        result = _extract_error_message(stderr)
-        assert "\n" in result
-
-    def test_handles_unicode(self):
-        """Unicode characters are handled correctly."""
-        stderr = "Error: café ☕\n".encode("utf-8")
-        result = _extract_error_message(stderr)
-        assert result == "Error: café ☕"
-
-    def test_handles_invalid_utf8(self):
-        """Invalid UTF-8 is replaced rather than raising."""
-        stderr = b"Error: \xff\xfe invalid\n"
-        result = _extract_error_message(stderr)
-        assert "Error:" in result
-        assert "invalid" in result
+from hopper.ore import OreRunner, run_ore
 
 
 class TestOreRunner:
@@ -73,7 +32,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -121,7 +80,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -157,7 +116,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -192,7 +151,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -227,7 +186,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -287,7 +246,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -321,7 +280,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -359,7 +318,7 @@ class TestOreRunner:
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("hopper.ore.find_project", return_value=mock_project),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -394,7 +353,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("hopper.ore.find_project", return_value=mock_project),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
@@ -428,7 +387,7 @@ class TestOreRunner:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             runner.run()
 
@@ -459,7 +418,7 @@ class TestRunOre:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = run_ore("test-id", Path("/tmp/test.sock"))
 
@@ -467,222 +426,8 @@ class TestRunOre:
         mock_popen.assert_called_once()
 
 
-class TestActivityMonitor:
-    """Tests for the activity monitor functionality."""
-
-    def test_check_activity_detects_stuck(self):
-        """Monitor detects stuck state when pane content doesn't change."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-
-        emitted = []
-        mock_conn = MagicMock()
-        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
-
-        # Set initial snapshot
-        runner._last_snapshot = "Hello World"
-
-        # Same content should trigger stuck
-        with patch("hopper.ore.capture_pane", return_value="Hello World"):
-            runner._check_activity()
-
-        assert runner._stuck_since is not None
-        stuck_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "stuck"
-        ]
-        assert len(stuck_emissions) == 1
-        # First stuck should report MONITOR_INTERVAL seconds, not 0
-        assert "5s" in stuck_emissions[0][1]["status"]
-
-    def test_check_activity_detects_running(self):
-        """Monitor detects running state when pane content changes."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-
-        emitted = []
-        mock_conn = MagicMock()
-        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
-
-        # Set initial snapshot
-        runner._last_snapshot = "Hello World"
-
-        # Different content should not trigger stuck
-        with patch("hopper.ore.capture_pane", return_value="Hello World 2"):
-            runner._check_activity()
-
-        assert runner._stuck_since is None
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "stuck" for e in emitted)
-        # Snapshot should be updated
-        assert runner._last_snapshot == "Hello World 2"
-
-    def test_check_activity_recovers_from_stuck(self):
-        """Monitor emits running when recovering from stuck state."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-
-        emitted = []
-        mock_conn = MagicMock()
-        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
-
-        # Set initial stuck state
-        runner._last_snapshot = "Hello World"
-        runner._stuck_since = 1000
-
-        # Different content should recover from stuck
-        with patch("hopper.ore.capture_pane", return_value="New content"):
-            runner._check_activity()
-
-        assert runner._stuck_since is None
-        assert any(
-            e[0] == "session_set_state"
-            and e[1]["state"] == "running"
-            and e[1]["status"] == "Claude running"
-            for e in emitted
-        )
-
-    def test_check_activity_stops_on_capture_failure(self):
-        """Monitor stops when pane capture fails."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-        runner._monitor_stop.clear()
-
-        with patch("hopper.ore.capture_pane", return_value=None):
-            runner._check_activity()
-
-        assert runner._monitor_stop.is_set()
-
-    def test_start_monitor_skips_without_tmux(self):
-        """Monitor doesn't start when not in tmux."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        with patch("hopper.ore.get_current_window_id", return_value=None):
-            runner._start_monitor()
-
-        assert runner._monitor_thread is None
-
-    def test_stop_monitor_handles_no_thread(self):
-        """Stop monitor handles case where thread was never started."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._stop_monitor()  # Should not raise
-
-    def test_check_activity_skips_when_shovel_done(self):
-        """Monitor skips stuck detection once shovel is complete."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-        runner._last_snapshot = "Hello World"
-        runner._shovel_done.set()
-
-        emitted = []
-        mock_conn = MagicMock()
-        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
-        runner.connection = mock_conn
-
-        with patch("hopper.ore.capture_pane", return_value="Hello World"):
-            runner._check_activity()
-
-        # Should not emit stuck since shovel is done
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "stuck" for e in emitted)
-
-
 class TestShovelWorkflow:
     """Tests for the shovel completion and auto-dismiss workflow."""
-
-    def test_on_server_message_sets_shovel_done(self):
-        """Callback sets _shovel_done when completed state received."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        msg = {
-            "type": "session_state_changed",
-            "session": {"id": "test-session", "state": "completed"},
-        }
-        runner._on_server_message(msg)
-
-        assert runner._shovel_done.is_set()
-
-    def test_on_server_message_ignores_other_sessions(self):
-        """Callback ignores messages for other sessions."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        msg = {
-            "type": "session_state_changed",
-            "session": {"id": "other-session", "state": "completed"},
-        }
-        runner._on_server_message(msg)
-
-        assert not runner._shovel_done.is_set()
-
-    def test_on_server_message_ignores_other_states(self):
-        """Callback ignores non-completed states."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        msg = {
-            "type": "session_state_changed",
-            "session": {"id": "test-session", "state": "running"},
-        }
-        runner._on_server_message(msg)
-
-        assert not runner._shovel_done.is_set()
-
-    def test_on_server_message_ignores_other_message_types(self):
-        """Callback ignores non-state-changed messages."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        msg = {
-            "type": "session_updated",
-            "session": {"id": "test-session", "state": "completed"},
-        }
-        runner._on_server_message(msg)
-
-        assert not runner._shovel_done.is_set()
-
-    def test_wait_and_dismiss_sends_ctrl_d(self):
-        """Dismiss thread sends two Ctrl-D after screen stabilizes."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-        runner._shovel_done.set()  # Already done
-
-        send_keys_calls = []
-
-        # Return same content twice to indicate stable screen
-        snapshots = iter(["content A", "content A"])
-        with (
-            patch("hopper.ore.capture_pane", side_effect=lambda _: next(snapshots)),
-            patch(
-                "hopper.ore.send_keys",
-                side_effect=lambda w, k: send_keys_calls.append((w, k)) or True,
-            ),
-            patch("hopper.ore.MONITOR_INTERVAL", 0.01),
-        ):
-            runner._wait_and_dismiss_claude()
-
-        assert send_keys_calls == [("@1", "C-d"), ("@1", "C-d")]
-
-    def test_wait_and_dismiss_aborts_when_monitor_stops(self):
-        """Dismiss thread aborts if monitor stop is set."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = "@1"
-        runner._monitor_stop.set()  # Already stopped
-
-        send_keys_calls = []
-        with patch("hopper.ore.send_keys", side_effect=lambda w, k: send_keys_calls.append((w, k))):
-            runner._wait_and_dismiss_claude()
-
-        assert send_keys_calls == []
-
-    def test_wait_and_dismiss_aborts_without_window(self):
-        """Dismiss thread aborts if no window ID."""
-        runner = OreRunner("test-session", Path("/tmp/test.sock"))
-        runner._window_id = None
-        runner._shovel_done.set()
-
-        send_keys_calls = []
-        with patch("hopper.ore.send_keys", side_effect=lambda w, k: send_keys_calls.append((w, k))):
-            runner._wait_and_dismiss_claude()
-
-        assert send_keys_calls == []
 
     def test_clean_exit_after_shovel_emits_ready(self):
         """Runner emits state=ready then stage=processing after clean shovel exit."""
@@ -708,10 +453,10 @@ class TestShovelWorkflow:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             # Simulate shovel completing before proc.wait returns
-            runner._shovel_done.set()
+            runner._done.set()
             exit_code = runner.run()
 
         assert exit_code == 0
@@ -753,7 +498,7 @@ class TestShovelWorkflow:
             patch("hopper.ore.connect", return_value=mock_response),
             patch("hopper.ore.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
-            patch("hopper.ore.get_current_window_id", return_value=None),
+            patch("hopper.runner.get_current_window_id", return_value=None),
         ):
             exit_code = runner.run()
 
