@@ -8,10 +8,11 @@ Hopper manages multiple Claude Code sessions through a terminal interface. It ru
 
 ## Key Concepts
 
-- **Session** - A Claude Code instance with unique ID, workflow stage, state (new/idle/running/stuck/error), active flag (hop ore connected), and associated tmux window
+- **Session** - A Claude Code instance with unique ID, workflow stage, state (new/running/stuck/error/completed/ready), active flag (hop ore connected), and associated tmux window
 - **Stage** - Workflow position: "ore" (new/unprocessed) or "processing" (in progress)
-- **Server** - Background Unix socket server (JSONL protocol) that persists sessions and broadcasts changes. Manages `active` flag and `tmux_window` on client connect/disconnect; state/status are client-driven via messages.
-- **TUI** - Terminal interface built with `Textual` for viewing and managing sessions
+- **Backlog** - Future work items with project and description, stored in `backlog.jsonl`
+- **Server** - Background Unix socket server (JSONL protocol) that persists sessions and backlog, broadcasts changes. Manages `active` flag and `tmux_window` on client connect/disconnect; state/status are client-driven via messages.
+- **TUI** - Terminal interface built with `Textual` for viewing and managing sessions and backlog
 
 ## Architecture
 
@@ -20,7 +21,7 @@ CLI (hop up)
     │
     ├── Server (background thread)
     │   ├── Unix socket listener
-    │   ├── Session state (in-memory + JSONL persistence)
+    │   ├── Session + backlog state (in-memory + JSONL persistence)
     │   └── Broadcast to connected clients
     │
     └── TUI (main thread)
@@ -31,14 +32,15 @@ CLI (hop up)
 
 **Data flow:** User input → TUI → Session mutation → Server broadcast → TUI re-render
 
-**Persistence:** Sessions stored in `~/.local/share/hopper/sessions.jsonl` (via platformdirs)
+**Persistence:** Sessions in `sessions.jsonl`, backlog in `backlog.jsonl` (via platformdirs in `~/.local/share/hopper/`)
 
 **Key modules:**
 - `cli.py` - Command dispatch, guards (require_server, is_inside_tmux)
 - `server.py` - Socket server, message handling, `start_server_with_tui()`
 - `client.py` - `HopperConnection` (persistent socket) and stateless helpers (`connect`, `ping`, etc.)
-- `tui.py` - Textual App with `HopperApp` class, session tables, and action handlers
+- `tui.py` - Textual App with `HopperApp` class, SessionTable, BacklogTable, and action handlers
 - `sessions.py` - Session dataclass, load/save/create/archive
+- `backlog.py` - BacklogItem dataclass, load/save/add/remove
 - `ore.py` - `OreRunner` wraps Claude execution with session lifecycle management
 - `tmux.py` - Window creation, selection, session listing
 - `claude.py` - Spawning Claude Code with session ID
@@ -102,9 +104,9 @@ async def test_example():
 ## TUI Design Principles
 
 - **Unicode only, no emoji** - Use Unicode symbols (●, ○, ✗, +) for status indicators. Never use emoji.
-- **Color for meaning** - Green=running, red=error, cyan=action, dim=idle/secondary
+- **Color for meaning** - Green=running, red=error, cyan=action, dim=new/secondary
 - **Status at row start** - Put status indicators at the beginning of rows for quick scanning
-- **Two-table layout** - ORE (new/unprocessed) and PROCESSING sections with cursor crossing between them
+- **Two-table layout** - Sessions table and Backlog table, Tab switches focus, `:focus`/`:blur` CSS for visual active state
 
 ## Quick Reference
 
@@ -114,4 +116,5 @@ async def test_example():
 - **Data directory:** `~/.local/share/hopper/` (platformdirs)
 - **Socket:** `~/.local/share/hopper/server.sock`
 - **Sessions:** `~/.local/share/hopper/sessions.jsonl`
+- **Backlog:** `~/.local/share/hopper/backlog.jsonl`
 - **Tests:** `test/test_*.py`

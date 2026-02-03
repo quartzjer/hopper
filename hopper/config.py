@@ -11,6 +11,7 @@ SESSIONS_FILE = DATA_DIR / "sessions.jsonl"
 ARCHIVED_FILE = DATA_DIR / "archived.jsonl"
 SESSIONS_DIR = DATA_DIR / "sessions"
 CONFIG_FILE = DATA_DIR / "config.json"
+BACKLOG_FILE = DATA_DIR / "backlog.jsonl"
 
 
 def load_config() -> dict[str, str]:

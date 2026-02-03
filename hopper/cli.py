@@ -487,9 +487,112 @@ def cmd_shovel(args: list[str]) -> int:
     os.replace(tmp_path, shovel_path)
 
     # Update session status
-    set_session_state(SOCKET_PATH, session_id, "idle", "Shovel complete")
+    set_session_state(SOCKET_PATH, session_id, "completed", "Shovel complete")
 
     print(f"Saved to {shovel_path}")
+    return 0
+
+
+@command("backlog", "Manage backlog items")
+def cmd_backlog(args: list[str]) -> int:
+    """Manage backlog items (list, add, remove)."""
+    from hopper.backlog import (
+        add_backlog_item,
+        find_by_short_id,
+        load_backlog,
+        remove_backlog_item,
+    )
+    from hopper.client import add_backlog, get_session, ping, remove_backlog
+    from hopper.sessions import format_age
+
+    parser = make_parser(
+        "backlog",
+        "Manage backlog items. Items track future work for projects.",
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=["add", "remove", "list"],
+        default="list",
+        help="Action to perform (default: list)",
+    )
+    parser.add_argument("text", nargs="*", help="Description (for add) or ID prefix (for remove)")
+    parser.add_argument("--project", "-p", help="Project name (required if no active session)")
+    try:
+        parsed = parse_args(parser, args)
+    except SystemExit:
+        return 0
+    except ArgumentError as e:
+        print(f"error: {e}")
+        parser.print_usage()
+        return 1
+
+    if parsed.action == "list":
+        items = load_backlog()
+        if not items:
+            print("No backlog items. Use: hop backlog add <description>")
+            return 0
+        for item in items:
+            age = format_age(item.created_at)
+            print(f"  {item.short_id}  {item.project:<16} {item.description}  ({age})")
+        return 0
+
+    if parsed.action == "add":
+        if not parsed.text:
+            print("error: description required for add")
+            parser.print_usage()
+            return 1
+
+        description = " ".join(parsed.text)
+        project = parsed.project
+        session_id = get_hopper_sid()
+
+        # Resolve project from session if not provided
+        if not project and session_id:
+            if err := require_server():
+                return err
+            session = get_session(SOCKET_PATH, session_id)
+            if session:
+                project = session.get("project", "")
+
+        if not project:
+            print("error: --project required (no active session to resolve from)")
+            return 1
+
+        # Route through server if running, otherwise write directly
+        server_running = ping(SOCKET_PATH)
+        if server_running:
+            add_backlog(SOCKET_PATH, project, description, session_id=session_id)
+        else:
+            items = load_backlog()
+            add_backlog_item(items, project, description, session_id=session_id)
+
+        print(f"Added: [{project}] {description}")
+        return 0
+
+    if parsed.action == "remove":
+        if not parsed.text:
+            print("error: ID prefix required for remove")
+            parser.print_usage()
+            return 1
+
+        prefix = parsed.text[0]
+        items = load_backlog()
+        item = find_by_short_id(items, prefix)
+        if not item:
+            print(f"No unique backlog item matching '{prefix}'")
+            return 1
+
+        # Route through server if running, otherwise write directly
+        server_running = ping(SOCKET_PATH)
+        if server_running:
+            remove_backlog(SOCKET_PATH, item.id)
+        else:
+            remove_backlog_item(items, item.id)
+
+        print(f"Removed: {item.short_id} [{item.project}] {item.description}")
+        return 0
+
     return 0
 
 

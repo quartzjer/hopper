@@ -305,7 +305,7 @@ def set_session_state(
     Args:
         socket_path: Path to the Unix socket
         session_id: The session ID to update
-        state: New state ("new", "idle", "running", "stuck", or "error")
+        state: New state ("new", "running", "stuck", "error", "completed", or "ready")
         status: Human-readable status text
         timeout: Connection timeout in seconds
 
@@ -348,6 +348,63 @@ def set_session_status(
         "ts": int(time.time() * 1000),
     }
     # Fire-and-forget: don't wait for response
+    try:
+        send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
+        return True
+    except Exception:
+        return False
+
+
+def add_backlog(
+    socket_path: Path,
+    project: str,
+    description: str,
+    session_id: str | None = None,
+    timeout: float = 2.0,
+) -> bool:
+    """Add a backlog item via the server (fire-and-forget).
+
+    Args:
+        socket_path: Path to the Unix socket
+        project: Project name
+        description: Item description
+        session_id: Optional session that added it
+        timeout: Connection timeout in seconds
+
+    Returns:
+        True if message was sent successfully, False otherwise
+    """
+    msg: dict = {
+        "type": "backlog_add",
+        "project": project,
+        "description": description,
+        "ts": int(time.time() * 1000),
+    }
+    if session_id:
+        msg["session_id"] = session_id
+    try:
+        send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
+        return True
+    except Exception:
+        return False
+
+
+def remove_backlog(socket_path: Path, item_id: str, timeout: float = 2.0) -> bool:
+    """Remove a backlog item via the server (fire-and-forget).
+
+    Args:
+        socket_path: Path to the Unix socket
+        item_id: ID or prefix of the item to remove
+        timeout: Connection timeout in seconds
+
+    Returns:
+        True if message was sent successfully, False otherwise
+    """
+    msg = {
+        "type": "backlog_remove",
+        "item_id": item_id,
+        "ts": int(time.time() * 1000),
+    }
     try:
         send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
         return True

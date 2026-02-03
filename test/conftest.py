@@ -2,7 +2,7 @@
 
 import pytest
 
-from hopper import config, sessions
+from hopper import backlog, config, sessions
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +28,9 @@ def isolate_config(tmp_path, monkeypatch):
     monkeypatch.setattr(sessions, "SESSIONS_FILE", tmp_path / "sessions.jsonl")
     monkeypatch.setattr(sessions, "ARCHIVED_FILE", tmp_path / "archived.jsonl")
     monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "sessions")
+
+    monkeypatch.setattr(config, "BACKLOG_FILE", tmp_path / "backlog.jsonl")
+    monkeypatch.setattr(backlog, "BACKLOG_FILE", tmp_path / "backlog.jsonl")
 
     return tmp_path
 

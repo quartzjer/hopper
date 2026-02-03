@@ -66,7 +66,7 @@ class Row:
     short_id: str
     stage: str  # STAGE_ORE or STAGE_PROCESSING
     age: str  # formatted age string
-    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_IDLE, STATUS_ERROR, STATUS_READY
+    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_READY
     active: bool = False  # Whether hop ore is connected
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
