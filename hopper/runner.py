@@ -83,28 +83,34 @@ class BaseRunner:
 
         try:
             # Query server for session state and project info
+            sid = self.session_id[:SHORT_ID_LEN]
             response = connect(self.socket_path, session_id=self.session_id)
-            if response:
-                session_data = response.get("session")
-                if session_data:
-                    if session_data.get("active", False):
-                        sid = self.session_id[:SHORT_ID_LEN]
-                        logger.error(f"Session {sid} already has an active connection")
-                        print(f"Session {sid} is already active")
-                        return 1
+            if not response:
+                print(f"Failed to connect to server for session {sid}")
+                return 1
 
-                    state = session_data.get("state")
-                    self.is_first_run = state == self._first_run_state
+            session_data = response.get("session")
+            if not session_data:
+                print(f"Session {sid} not found")
+                return 1
 
-                    project_name = session_data.get("project", "")
-                    if project_name:
-                        self.project_name = project_name
-                        project = find_project(project_name)
-                        if project:
-                            self.project_dir = project.path
+            if session_data.get("active", False):
+                logger.error(f"Session {sid} already has an active connection")
+                print(f"Session {sid} is already active")
+                return 1
 
-                    # Let subclass extract additional data
-                    self._load_session_data(session_data)
+            state = session_data.get("state")
+            self.is_first_run = state == self._first_run_state
+
+            project_name = session_data.get("project", "")
+            if project_name:
+                self.project_name = project_name
+                project = find_project(project_name)
+                if project:
+                    self.project_dir = project.path
+
+            # Let subclass extract additional data
+            self._load_session_data(session_data)
 
             # Subclass pre-flight validation and setup
             err = self._setup()

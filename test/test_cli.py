@@ -173,49 +173,13 @@ def test_ore_missing_session_id(capsys):
     assert "session_id" in captured.out
 
 
-def test_ore_rejects_running_session(capsys):
-    """ore rejects session that is already running."""
-    mock_session = {"id": "test-1234-session", "state": "running"}
+def test_ore_delegates_to_runner(capsys):
+    """ore delegates to run_ore after server check."""
     with patch("hopper.cli.require_server", return_value=None):
-        with patch("hopper.client.get_session", return_value=mock_session):
+        with patch("hopper.ore.run_ore", return_value=0) as mock_run:
             result = cmd_ore(["test-1234-session"])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "test-123" in captured.out  # short_id
-    assert "already running" in captured.out
-    assert "--force" in captured.out
-
-
-def test_ore_force_allows_running_session(capsys):
-    """ore --force allows taking over a running session."""
-    mock_session = {"id": "test-1234-session", "state": "running"}
-    with patch("hopper.cli.require_server", return_value=None):
-        with patch("hopper.client.get_session", return_value=mock_session):
-            with patch("hopper.ore.run_ore", return_value=0) as mock_run:
-                result = cmd_ore(["test-1234-session", "--force"])
     assert result == 0
     mock_run.assert_called_once()
-
-
-def test_ore_allows_new_session(capsys):
-    """ore allows session that is new."""
-    mock_session = {"id": "test-1234-session", "state": "new"}
-    with patch("hopper.cli.require_server", return_value=None):
-        with patch("hopper.client.get_session", return_value=mock_session):
-            with patch("hopper.ore.run_ore", return_value=0) as mock_run:
-                result = cmd_ore(["test-1234-session"])
-    assert result == 0
-    mock_run.assert_called_once()
-
-
-def test_ore_session_not_found(capsys):
-    """ore returns error when session not found."""
-    with patch("hopper.cli.require_server", return_value=None):
-        with patch("hopper.client.get_session", return_value=None):
-            result = cmd_ore(["nonexistent-session"])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "not found" in captured.out
 
 
 # Tests for ping command

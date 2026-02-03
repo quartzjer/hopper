@@ -11,11 +11,11 @@ class TestRefineRunner:
     def _make_runner(self, session_id="test-session-id"):
         return RefineRunner(session_id, Path("/tmp/test.sock"))
 
-    def _mock_response(self, state="ready", active=False, project="my-project"):
+    def _mock_response(self, state="ready", active=False, project="my-project", stage="processing"):
         return {
             "type": "connected",
             "tmux": None,
-            "session": {"state": state, "active": active, "project": project},
+            "session": {"state": state, "active": active, "project": project, "stage": stage},
             "session_found": True,
         }
 
@@ -386,7 +386,7 @@ class TestRunRefine:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "project": "my-project"},
+            "session": {"state": "running", "project": "my-project", "stage": "processing"},
             "session_found": True,
         }
 
@@ -435,7 +435,7 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "session": {"state": "ready", "project": "my-project"},
+                    "session": {"state": "ready", "project": "my-project", "stage": "processing"},
                     "session_found": True,
                 },
             ),
@@ -490,7 +490,7 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "session": {"state": "running", "project": "my-project"},
+                    "session": {"state": "running", "project": "my-project", "stage": "processing"},
                     "session_found": True,
                 },
             ),

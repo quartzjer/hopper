@@ -21,8 +21,17 @@ class RefineRunner(BaseRunner):
         super().__init__(session_id, socket_path)
         self.worktree_path: Path | None = None
         self.shovel_content: str | None = None
+        self.stage: str = ""
+
+    def _load_session_data(self, session_data: dict) -> None:
+        self.stage = session_data.get("stage", "")
 
     def _setup(self) -> int | None:
+        # Validate stage
+        if self.stage != "processing":
+            print(f"Session {self.session_id[:SHORT_ID_LEN]} is not in processing stage.")
+            return 1
+
         # Validate project directory
         if not self.project_dir:
             print("No project directory found for session.")

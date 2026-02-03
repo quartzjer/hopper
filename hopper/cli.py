@@ -188,14 +188,10 @@ def cmd_up(args: list[str]) -> int:
 @command("ore", "Run Claude for a session")
 def cmd_ore(args: list[str]) -> int:
     """Run Claude for a session, managing active/inactive state."""
-    from hopper.client import get_session
     from hopper.ore import run_ore
 
     parser = make_parser("ore", "Run Claude for a session (internal command).")
     parser.add_argument("session_id", help="Session ID to run")
-    parser.add_argument(
-        "-f", "--force", action="store_true", help="Force connection even if already running"
-    )
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -205,37 +201,19 @@ def cmd_ore(args: list[str]) -> int:
         parser.print_usage()
         return 1
 
-    session_id = parsed.session_id
-
-    # Server must be running (but we proceed gracefully if it dies mid-session)
     if err := require_server():
         return err
 
-    # Validate session exists and check state
-    session = get_session(SOCKET_PATH, session_id)
-    if not session:
-        print(f"Session {session_id} not found.")
-        return 1
-
-    if session.get("state") == "running" and not parsed.force:
-        print(f"Session {session_id[:8]} is already running.")
-        print("Use --force to take over the session.")
-        return 1
-
-    return run_ore(session_id, SOCKET_PATH)
+    return run_ore(parsed.session_id, SOCKET_PATH)
 
 
 @command("refine", "Run refine workflow for a session")
 def cmd_refine(args: list[str]) -> int:
     """Run Claude with refine prompt in a git worktree."""
-    from hopper.client import get_session
     from hopper.refine import run_refine
 
     parser = make_parser("refine", "Run refine workflow for a processing-stage session.")
     parser.add_argument("session_id", help="Session ID to run")
-    parser.add_argument(
-        "-f", "--force", action="store_true", help="Force connection even if already running"
-    )
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -245,26 +223,10 @@ def cmd_refine(args: list[str]) -> int:
         parser.print_usage()
         return 1
 
-    session_id = parsed.session_id
-
     if err := require_server():
         return err
 
-    session = get_session(SOCKET_PATH, session_id)
-    if not session:
-        print(f"Session {session_id} not found.")
-        return 1
-
-    if session.get("stage") != "processing":
-        print(f"Session {session_id[:8]} is not in processing stage.")
-        return 1
-
-    if session.get("state") == "running" and not parsed.force:
-        print(f"Session {session_id[:8]} is already running.")
-        print("Use --force to take over the session.")
-        return 1
-
-    return run_refine(session_id, SOCKET_PATH)
+    return run_refine(parsed.session_id, SOCKET_PATH)
 
 
 @command("status", "Show or update session status")
