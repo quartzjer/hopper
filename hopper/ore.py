@@ -79,17 +79,14 @@ class OreRunner:
             # Run Claude (blocking) - notifies "running" after successful start
             exit_code, error_msg = self._run_claude()
 
-            # Notify server we're done with appropriate message
-            if exit_code == 0:
-                self._emit_state("idle", "Completed successfully")
-            elif exit_code == 127:
+            # Only emit error state explicitly - server handles idle on disconnect
+            if exit_code == 127:
                 self._emit_state("error", error_msg or "Command not found")
-            elif exit_code == 130:
-                self._emit_state("idle", "Interrupted")
-            else:
-                # Use captured stderr if available, otherwise generic message
+            elif exit_code != 0 and exit_code != 130:
+                # Non-zero exit (except interrupt) - set error state
                 msg = error_msg or f"Exited with code {exit_code}"
                 self._emit_state("error", msg)
+            # For success (0) or interrupt (130), let server handle via disconnect
 
             return exit_code
 
@@ -105,8 +102,7 @@ class OreRunner:
     def _handle_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
         logger.debug(f"Received signal {signum}")
-        # Notify server we're going idle before exiting
-        self._emit_state("idle", "Interrupted")
+        # Server handles state transition to idle on disconnect
         # Re-raise as KeyboardInterrupt so subprocess handling works correctly
         if signum == signal.SIGINT:
             raise KeyboardInterrupt

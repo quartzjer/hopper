@@ -301,3 +301,169 @@ def test_server_handles_session_set_state(socket_path, server, temp_config):
     assert server.sessions[0].state == "running"
 
     client.close()
+
+
+def test_server_registers_session_client_on_connect(socket_path, server, temp_config):
+    """Server registers client as session owner when connecting with session_id."""
+    from hopper.sessions import Session, save_sessions
+
+    # Create a test session
+    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    # Connect client with session_id
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    msg = {"type": "connect", "session_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    # Wait for response
+    client.recv(4096)
+
+    # Wait for registration
+    for _ in range(50):
+        if "test-id" in server.session_clients:
+            break
+        time.sleep(0.1)
+
+    # Should be registered
+    assert "test-id" in server.session_clients
+
+    client.close()
+
+
+def test_server_clears_state_on_disconnect(socket_path, server, temp_config):
+    """Server sets session to idle and clears tmux_window on client disconnect."""
+    from hopper.sessions import Session, save_sessions
+
+    # Create a test session in running state with tmux window
+    session = Session(id="test-id", stage="ore", created_at=1000, state="running", tmux_window="@1")
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    # Connect client with session_id
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    msg = {"type": "connect", "session_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+    client.recv(4096)
+
+    # Wait for registration
+    for _ in range(50):
+        if "test-id" in server.session_clients:
+            break
+        time.sleep(0.1)
+
+    # Disconnect client
+    client.close()
+
+    # Wait for disconnect handling
+    for _ in range(50):
+        if server.sessions[0].state == "idle":
+            break
+        time.sleep(0.1)
+
+    # Session should be idle with tmux_window cleared
+    assert server.sessions[0].state == "idle"
+    assert server.sessions[0].tmux_window is None
+    assert "test-id" not in server.session_clients
+
+
+def test_server_preserves_error_state_on_disconnect(socket_path, server, temp_config):
+    """Server preserves error state on client disconnect (doesn't override to idle)."""
+    from hopper.sessions import Session, save_sessions
+
+    # Create a test session in error state
+    session = Session(
+        id="test-id",
+        stage="ore",
+        created_at=1000,
+        state="error",
+        message="Something failed",
+        tmux_window="@1",
+    )
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    # Connect client with session_id
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    msg = {"type": "connect", "session_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+    client.recv(4096)
+
+    # Wait for registration
+    for _ in range(50):
+        if "test-id" in server.session_clients:
+            break
+        time.sleep(0.1)
+
+    # Disconnect client
+    client.close()
+
+    # Wait for disconnect handling
+    for _ in range(50):
+        if server.sessions[0].tmux_window is None:
+            break
+        time.sleep(0.1)
+
+    # Session should still be in error state, but tmux_window cleared
+    assert server.sessions[0].state == "error"
+    assert server.sessions[0].message == "Something failed"
+    assert server.sessions[0].tmux_window is None
+
+
+def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_config):
+    """Server disconnects old client when new client connects for same session."""
+    from hopper.sessions import Session, save_sessions
+
+    # Create a test session
+    session = Session(id="test-id", stage="ore", created_at=1000, state="idle")
+    server.sessions = [session]
+    save_sessions(server.sessions)
+
+    # First client connects
+    client1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client1.connect(str(socket_path))
+    client1.settimeout(2.0)
+
+    msg = {"type": "connect", "session_id": "test-id"}
+    client1.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+    client1.recv(4096)
+
+    # Wait for registration
+    for _ in range(50):
+        if "test-id" in server.session_clients:
+            break
+        time.sleep(0.1)
+
+    old_socket = server.session_clients["test-id"]
+
+    # Second client connects for same session
+    client2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client2.connect(str(socket_path))
+    client2.settimeout(2.0)
+
+    msg = {"type": "connect", "session_id": "test-id"}
+    client2.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+    client2.recv(4096)
+
+    # Wait for re-registration
+    for _ in range(50):
+        if server.session_clients.get("test-id") != old_socket:
+            break
+        time.sleep(0.1)
+
+    # Second client should now own the session
+    assert "test-id" in server.session_clients
+    assert server.session_clients["test-id"] != old_socket
+
+    client1.close()
+    client2.close()

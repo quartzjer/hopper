@@ -188,11 +188,14 @@ def cmd_up(args: list[str]) -> int:
 @command("ore", "Run Claude for a session")
 def cmd_ore(args: list[str]) -> int:
     """Run Claude for a session, managing active/inactive state."""
-    from hopper.client import session_exists
+    from hopper.client import get_session
     from hopper.ore import run_ore
 
     parser = make_parser("ore", "Run Claude for a session (internal command).")
     parser.add_argument("session_id", help="Session ID to run")
+    parser.add_argument(
+        "-f", "--force", action="store_true", help="Force connection even if already running"
+    )
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -208,9 +211,15 @@ def cmd_ore(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    # Validate session exists
-    if not session_exists(SOCKET_PATH, session_id):
+    # Validate session exists and check state
+    session = get_session(SOCKET_PATH, session_id)
+    if not session:
         print(f"Session {session_id} not found.")
+        return 1
+
+    if session.get("state") == "running" and not parsed.force:
+        print(f"Session {session_id[:8]} is already running.")
+        print("Use --force to take over the session.")
         return 1
 
     return run_ore(session_id, SOCKET_PATH)

@@ -437,11 +437,14 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        if session.tmux_window and switch_to_window(session.tmux_window):
-            # Successfully switched to existing window
-            pass
+        # Session state is authoritative: running means hop ore is connected and window exists
+        if session.state == "running" and session.tmux_window:
+            # Session is active - switch to existing window
+            if not switch_to_window(session.tmux_window):
+                # This shouldn't happen if state tracking is correct, but handle it
+                self.notify("Failed to switch to window", severity="error")
         else:
-            # Respawn in new window
+            # Session is not running - spawn new hop ore instance
             window_id = spawn_claude(session.id, project_path)
             if window_id:
                 session.tmux_window = window_id

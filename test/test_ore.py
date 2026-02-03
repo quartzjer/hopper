@@ -49,8 +49,8 @@ class TestExtractErrorMessage:
 
 
 class TestOreRunner:
-    def test_run_emits_state_changes(self):
-        """Runner emits state changes via HopperConnection."""
+    def test_run_emits_running_state(self):
+        """Runner emits running state when Claude starts successfully."""
         runner = OreRunner("test-session", Path("/tmp/test.sock"))
 
         emitted = []
@@ -77,14 +77,10 @@ class TestOreRunner:
             exit_code = runner.run()
 
         assert exit_code == 0
-        # Should emit running, then idle (exit code 0)
+        # Should emit running state (server handles idle on disconnect)
         assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
-        assert any(
-            e[0] == "session_set_state"
-            and e[1]["state"] == "idle"
-            and e[1]["message"] == "Completed successfully"
-            for e in emitted
-        )
+        # Should NOT emit idle - server handles that on disconnect
+        assert not any(e[0] == "session_set_state" and e[1]["state"] == "idle" for e in emitted)
 
     def test_run_emits_error_state_on_nonzero_exit(self):
         """Runner emits error state when Claude exits with non-zero."""
