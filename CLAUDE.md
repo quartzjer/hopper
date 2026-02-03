@@ -41,9 +41,9 @@ CLI (hop up)
 - `tui.py` - Textual App with `HopperApp` class, SessionTable, BacklogTable, and action handlers
 - `sessions.py` - Session dataclass, load/save/create/archive
 - `backlog.py` - BacklogItem dataclass, load/save/add/remove
-- `runner.py` - `BaseRunner` shared logic for ore and refine runners
-- `ore.py` - `OreRunner` wraps Claude execution for ore stage
-- `refine.py` - `RefineRunner` wraps Claude execution for processing stage (git worktree)
+- `runner.py` - `BaseRunner` full run lifecycle: server communication, subprocess, monitoring, dismiss
+- `ore.py` - `OreRunner` configures ore-stage behavior (shovel prompt, scope)
+- `refine.py` - `RefineRunner` configures processing-stage behavior (git worktree, refine prompt)
 - `git.py` - Git utilities (worktree creation)
 - `tmux.py` - Window creation, selection, session listing
 - `claude.py` - Spawning Claude Code with session ID

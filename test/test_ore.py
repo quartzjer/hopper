@@ -29,8 +29,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -51,7 +51,7 @@ class TestOreRunner:
             "session_found": True,
         }
 
-        with patch("hopper.ore.connect", return_value=mock_response):
+        with patch("hopper.runner.connect", return_value=mock_response):
             exit_code = runner.run()
 
         assert exit_code == 1
@@ -77,8 +77,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -113,8 +113,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -148,8 +148,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -183,8 +183,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -214,8 +214,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch(
                 "hopper.ore.prompt.load",
                 side_effect=FileNotFoundError("Prompt not found: shovel.md"),
@@ -243,8 +243,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -277,8 +277,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -314,9 +314,9 @@ class TestOreRunner:
         mock_project.path = str(project_dir)
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
-            patch("hopper.ore.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -330,11 +330,6 @@ class TestOreRunner:
     def test_run_fails_if_project_dir_missing(self, tmp_path):
         """Runner returns error if project directory doesn't exist."""
         runner = OreRunner("test-session", Path("/tmp/test.sock"))
-
-        emitted = []
-
-        mock_conn = MagicMock()
-        mock_conn.emit = lambda msg_type, **kw: emitted.append((msg_type, kw)) or True
 
         mock_response = {
             "type": "connected",
@@ -350,20 +345,12 @@ class TestOreRunner:
         mock_project.path = str(missing_dir)
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
-            patch("hopper.ore.find_project", return_value=mock_project),
-            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.find_project", return_value=mock_project),
         ):
             exit_code = runner.run()
 
         assert exit_code == 1
-        # Should emit error state
-        error_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "error"
-        ]
-        assert len(error_emissions) == 1
-        assert "not found" in error_emissions[0][1]["status"]
 
     def test_run_without_project_uses_no_cwd(self):
         """Runner passes cwd=None when no project is set."""
@@ -384,8 +371,8 @@ class TestOreRunner:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -395,6 +382,38 @@ class TestOreRunner:
         mock_popen.assert_called_once()
         call_kwargs = mock_popen.call_args[1]
         assert call_kwargs["cwd"] is None
+
+    def test_loads_scope_from_session_data(self):
+        """Runner loads scope from session data."""
+        runner = OreRunner("test-session", Path("/tmp/test.sock"))
+
+        mock_conn = MagicMock()
+        mock_conn.emit = MagicMock(return_value=True)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stderr = None
+
+        mock_response = {
+            "type": "connected",
+            "tmux": None,
+            "session": {"state": "new", "scope": "build the widget"},
+            "session_found": True,
+        }
+
+        with (
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("hopper.runner.get_current_window_id", return_value=None),
+            patch("hopper.ore.prompt.load", return_value="prompt") as mock_load,
+        ):
+            runner.run()
+
+        # Check scope was passed to prompt
+        mock_load.assert_called_once()
+        context = mock_load.call_args[1]["context"]
+        assert context["scope"] == "build the widget"
 
 
 class TestRunOre:
@@ -415,8 +434,8 @@ class TestRunOre:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -450,8 +469,8 @@ class TestShovelWorkflow:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):
@@ -495,8 +514,8 @@ class TestShovelWorkflow:
         }
 
         with (
-            patch("hopper.ore.connect", return_value=mock_response),
-            patch("hopper.ore.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
         ):

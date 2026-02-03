@@ -48,9 +48,9 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response()),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response()),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True) as mock_wt,
             patch("hopper.refine.prompt.load", return_value="loaded prompt") as mock_load,
@@ -100,9 +100,9 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree") as mock_wt,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -124,7 +124,7 @@ class TestRefineRunner:
         """Runner exits with code 1 if session is already active."""
         runner = self._make_runner()
 
-        with patch("hopper.refine.connect", return_value=self._mock_response(active=True)):
+        with patch("hopper.runner.connect", return_value=self._mock_response(active=True)):
             exit_code = runner.run()
 
         assert exit_code == 1
@@ -134,7 +134,7 @@ class TestRefineRunner:
         runner = self._make_runner()
 
         response = self._mock_response(project="")
-        with patch("hopper.refine.connect", return_value=response):
+        with patch("hopper.runner.connect", return_value=response):
             exit_code = runner.run()
 
         assert exit_code == 1
@@ -147,8 +147,8 @@ class TestRefineRunner:
         mock_project.path = str(tmp_path / "does-not-exist")
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response()),
+            patch("hopper.runner.find_project", return_value=mock_project),
         ):
             exit_code = runner.run()
 
@@ -168,8 +168,8 @@ class TestRefineRunner:
         mock_project.path = str(project_dir)
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response()),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=False),
         ):
@@ -191,8 +191,8 @@ class TestRefineRunner:
         mock_project.path = str(project_dir)
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response()),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
         ):
@@ -220,9 +220,9 @@ class TestRefineRunner:
         mock_proc.stderr = io.BytesIO(b"Something broke\n")
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn(emitted)),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -256,9 +256,9 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn(emitted)),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -284,9 +284,9 @@ class TestRefineRunner:
         mock_project.path = str(project_dir)
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn(emitted)),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -319,9 +319,9 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=mock_conn),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -350,9 +350,9 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.refine.connect", return_value=self._mock_response(state="running")),
-            patch("hopper.refine.HopperConnection", return_value=self._mock_conn()),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -391,9 +391,9 @@ class TestRunRefine:
         }
 
         with (
-            patch("hopper.refine.connect", return_value=mock_response),
-            patch("hopper.refine.HopperConnection", return_value=mock_conn),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.connect", return_value=mock_response),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),
@@ -431,7 +431,7 @@ class TestRefineCompletion:
 
         with (
             patch(
-                "hopper.refine.connect",
+                "hopper.runner.connect",
                 return_value={
                     "type": "connected",
                     "tmux": None,
@@ -439,8 +439,8 @@ class TestRefineCompletion:
                     "session_found": True,
                 },
             ),
-            patch("hopper.refine.HopperConnection", return_value=mock_conn),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="prompt"),
@@ -486,7 +486,7 @@ class TestRefineCompletion:
 
         with (
             patch(
-                "hopper.refine.connect",
+                "hopper.runner.connect",
                 return_value={
                     "type": "connected",
                     "tmux": None,
@@ -494,8 +494,8 @@ class TestRefineCompletion:
                     "session_found": True,
                 },
             ),
-            patch("hopper.refine.HopperConnection", return_value=mock_conn),
-            patch("hopper.refine.find_project", return_value=mock_project),
+            patch("hopper.runner.HopperConnection", return_value=mock_conn),
+            patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_session_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_window_id", return_value=None),

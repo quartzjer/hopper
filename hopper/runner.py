@@ -1,13 +1,16 @@
 """Base runner - shared logic for ore and refine runners."""
 
 import logging
+import os
 import signal
+import subprocess
 import sys
 import threading
 from pathlib import Path
 
-from hopper.client import HopperConnection
-from hopper.sessions import current_time_ms
+from hopper.client import HopperConnection, connect
+from hopper.projects import find_project
+from hopper.sessions import SHORT_ID_LEN, current_time_ms
 from hopper.tmux import capture_pane, get_current_window_id, send_keys
 
 logger = logging.getLogger(__name__)
@@ -41,14 +44,21 @@ def extract_error_message(stderr_bytes: bytes) -> str | None:
 class BaseRunner:
     """Base class for session runners (ore, refine).
 
-    Provides shared infrastructure: signal handling, server communication,
-    activity monitoring, completion detection, and auto-dismiss.
+    Provides the full run lifecycle: signal handling, server communication,
+    subprocess management, activity monitoring, completion detection, and
+    auto-dismiss.
 
-    Subclasses must implement run() and _run_claude().
+    Subclasses configure behavior via class attributes and implement:
+    - _setup(): Pre-flight validation and setup. Return int to bail.
+    - _build_command(): Return (cmd, cwd) for the Claude subprocess.
     """
 
-    # Subclasses set these to customize completion behavior
+    # Subclasses set these to customize behavior
     _done_label: str = "done"
+    _first_run_state: str = "new"
+    _done_status: str = "Done"
+    _next_stage: str = ""
+    _always_dismiss: bool = False
 
     def __init__(self, session_id: str, socket_path: Path):
         self.session_id = session_id
@@ -67,11 +77,120 @@ class BaseRunner:
         self._done = threading.Event()
 
     def run(self) -> int:
-        """Run Claude for this session. Returns exit code.
+        """Run Claude for this session. Returns exit code."""
+        original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
+        original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
 
-        Subclasses must implement this.
+        try:
+            # Query server for session state and project info
+            response = connect(self.socket_path, session_id=self.session_id)
+            if response:
+                session_data = response.get("session")
+                if session_data:
+                    if session_data.get("active", False):
+                        sid = self.session_id[:SHORT_ID_LEN]
+                        logger.error(f"Session {sid} already has an active connection")
+                        print(f"Session {sid} is already active")
+                        return 1
+
+                    state = session_data.get("state")
+                    self.is_first_run = state == self._first_run_state
+
+                    project_name = session_data.get("project", "")
+                    if project_name:
+                        self.project_name = project_name
+                        project = find_project(project_name)
+                        if project:
+                            self.project_dir = project.path
+
+                    # Let subclass extract additional data
+                    self._load_session_data(session_data)
+
+            # Subclass pre-flight validation and setup
+            err = self._setup()
+            if err is not None:
+                return err
+
+            # Start persistent connection and register ownership
+            self.connection = HopperConnection(self.socket_path)
+            self.connection.start(callback=self._on_server_message)
+            self.connection.emit("session_register", session_id=self.session_id)
+
+            # Run Claude (blocking)
+            exit_code, error_msg = self._run_claude()
+
+            if exit_code == 127:
+                self._emit_state("error", error_msg or "Command not found")
+            elif exit_code != 0 and exit_code != 130:
+                msg = error_msg or f"Exited with code {exit_code}"
+                self._emit_state("error", msg)
+            elif exit_code == 0 and self._done.is_set():
+                self._emit_state("ready", self._done_status)
+                if self._next_stage:
+                    self._emit_stage(self._next_stage)
+
+            return exit_code
+
+        finally:
+            self._stop_monitor()
+            signal.signal(signal.SIGINT, original_sigint)
+            signal.signal(signal.SIGTERM, original_sigterm)
+            if self.connection:
+                self.connection.stop()
+
+    def _load_session_data(self, session_data: dict) -> None:
+        """Extract additional fields from session data. Override in subclasses."""
+        pass
+
+    def _setup(self) -> int | None:
+        """Pre-flight validation and setup. Return int exit code to bail, None to continue."""
+        return None
+
+    def _build_command(self) -> tuple[list[str], str | None]:
+        """Build the Claude command and working directory.
+
+        Returns:
+            (cmd, cwd) tuple. Subclasses must implement this.
         """
         raise NotImplementedError
+
+    def _run_claude(self) -> tuple[int, str | None]:
+        """Run Claude subprocess. Returns (exit_code, error_message)."""
+        cmd, cwd = self._build_command()
+
+        env = os.environ.copy()
+        env["HOPPER_SID"] = self.session_id
+
+        logger.debug(f"Running: {' '.join(cmd[:3])}...")
+
+        try:
+            proc = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE, cwd=cwd)
+
+            self._emit_state("running", "Claude running")
+            self._start_monitor()
+
+            # Start dismiss thread if configured
+            should_dismiss = self._always_dismiss or self.is_first_run
+            if should_dismiss and self._window_id:
+                threading.Thread(
+                    target=self._wait_and_dismiss_claude,
+                    name=f"{self._done_label.lower().replace(' ', '-')}-dismiss",
+                    daemon=True,
+                ).start()
+
+            proc.wait()
+
+            if proc.returncode != 0 and proc.stderr:
+                stderr_bytes = proc.stderr.read()
+                error_msg = extract_error_message(stderr_bytes)
+                return proc.returncode, error_msg
+
+            return proc.returncode, None
+        except FileNotFoundError:
+            logger.error("claude command not found")
+            return 127, "claude command not found"
+        except KeyboardInterrupt:
+            return 130, None
 
     def _handle_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
