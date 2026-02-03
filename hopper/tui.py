@@ -569,9 +569,6 @@ class HopperApp(App):
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
         Binding("ctrl+d", "quit", "Quit", show=False, priority=True),
-        Binding("tab", "switch_table", "Switch", priority=True),
-        Binding("down", "cursor_down", show=False),
-        Binding("up", "cursor_up", show=False),
         Binding("c", "new_session", "Create"),
         Binding("b", "new_backlog", "Backlog"),
         Binding("a", "archive", "Archive"),
@@ -759,29 +756,6 @@ class HopperApp(App):
             if session.id == session_id:
                 return session
         return None
-
-    def _focused_table(self) -> DataTable:
-        """Return whichever table currently has focus."""
-        focused = self.focused
-        if isinstance(focused, (SessionTable, BacklogTable)):
-            return focused
-        return self.query_one("#session-table", SessionTable)
-
-    def action_switch_table(self) -> None:
-        """Switch focus between session and backlog tables."""
-        focused = self.focused
-        if isinstance(focused, SessionTable):
-            self.query_one("#backlog-table", BacklogTable).focus()
-        else:
-            self.query_one("#session-table", SessionTable).focus()
-
-    def action_cursor_down(self) -> None:
-        """Move cursor down in the focused table."""
-        self._focused_table().action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        """Move cursor up in the focused table."""
-        self._focused_table().action_cursor_up()
 
     def _require_projects(self) -> bool:
         """Check that projects are configured. Returns True if available."""
