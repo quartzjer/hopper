@@ -1,8 +1,6 @@
 # Background Research
 
-## Request
-
-Build complete context for **$request**.
+Build complete context for the area described below.
 
 1. **Read the specified references** - Start with any docs, files, or areas mentioned. Understand the design and expectations.
 
@@ -22,3 +20,9 @@ Present a concise summary demonstrating you understand this area:
 - Key patterns to follow
 
 Research only - no implementation yet. This context will inform the design phase. Thanks!
+
+---
+
+## Directions
+
+$request

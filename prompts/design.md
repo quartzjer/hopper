@@ -1,8 +1,6 @@
 # Plan
 
-## Request
-
-Based on the research context we've built, think through **$request** completely.
+Based on the research context we've built, think through the task described below completely.
 
 1. **Work through it fully** - Consider all impacts, dependencies, edge cases. Be exhaustive and thorough. Make sure you have the complete picture before summarizing.
 
@@ -19,3 +17,9 @@ Present a concise but complete action plan:
 - Any risks or open questions
 
 Planning only - no implementation yet. Ready for review before proceeding. Thanks!
+
+---
+
+## Directions
+
+$request

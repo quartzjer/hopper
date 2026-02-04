@@ -1,8 +1,6 @@
 # Code Review
 
-## Request
-
-Review **$request** thoroughly. Trace through all logic paths until you have the complete picture. Find:
+Review the area described below thoroughly. Trace through all logic paths until you have the complete picture. Find:
 
 - **Dead/unused code** - functions, imports, variables, files with no callers
 - **Dangling references** - broken imports, missing deps, orphaned calls after refactors
@@ -22,3 +20,9 @@ Present a categorized summary of issues found:
 - Surface any questions needing clarification
 
 Do not implement fixes yet - findings only for review and approval. Thanks!
+
+---
+
+## Directions
+
+$request

@@ -1,8 +1,6 @@
 # Implement
 
-## Request
-
-Implement **$request** based on the plan we've reviewed.
+Implement the task described below based on the plan we've reviewed.
 
 1. **Work through it carefully** - Clean, maintainable code. KISS and DRY.
 
@@ -19,3 +17,9 @@ Summarize your work:
 - Any issues or followups encountered
 
 Implementation complete - ready for review. Thanks!
+
+---
+
+## Directions
+
+$request
