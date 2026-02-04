@@ -1,8 +1,8 @@
 # Plan
 
-## Task
+## Request
 
-Based on the research context we've built, think through **$task** completely.
+Based on the research context we've built, think through **$request** completely.
 
 1. **Work through it fully** - Consider all impacts, dependencies, edge cases. Be exhaustive and thorough. Make sure you have the complete picture before summarizing.
 

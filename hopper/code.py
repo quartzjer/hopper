@@ -1,4 +1,4 @@
-"""Task runner - runs a prompt via Codex, resuming the session's Codex thread."""
+"""Code runner - runs a prompt via Codex, resuming the session's Codex thread."""
 
 import json
 import logging
@@ -14,19 +14,20 @@ from hopper.sessions import current_time_ms, format_duration_ms, get_session_dir
 logger = logging.getLogger(__name__)
 
 
-def run_task(session_id: str, socket_path: Path, task_name: str) -> int:
-    """Run a task prompt via Codex for a processing-stage session.
+def run_code(session_id: str, socket_path: Path, stage_name: str, request: str) -> int:
+    """Run a stage prompt via Codex for a processing-stage session.
 
     Resumes the session's Codex thread so that context accumulates across
-    tasks. Validates the prompt exists, session is in processing stage,
+    stages. Validates the prompt exists, session is in processing stage,
     cwd matches the session worktree, and a Codex thread ID is present.
-    Saves artifacts (<task>.in.md, <task>.out.md, <task>.json) to the
+    Saves artifacts (<stage>.in.md, <stage>.out.md, <stage>.json) to the
     session directory and prints the output to stdout.
 
     Args:
         session_id: The hopper session ID.
         socket_path: Path to the server Unix socket.
-        task_name: Name of the prompt file (without .md extension).
+        stage_name: Name of the prompt file (without .md extension).
+        request: The user's directions/request text from stdin.
 
     Returns:
         Exit code (0 on success).
@@ -67,7 +68,7 @@ def run_task(session_id: str, socket_path: Path, task_name: str) -> int:
         return 1
 
     # Build context for prompt template
-    context: dict[str, str] = {}
+    context: dict[str, str] = {"request": request}
     project_name = session_data.get("project", "")
     if project_name:
         context["project"] = project_name
@@ -80,28 +81,28 @@ def run_task(session_id: str, socket_path: Path, task_name: str) -> int:
 
     # Load prompt with context
     try:
-        prompt_text = prompt.load(task_name, context=context if context else None)
+        prompt_text = prompt.load(stage_name, context=context if context else None)
     except FileNotFoundError:
-        print(f"Task prompt not found: prompts/{task_name}.md")
+        print(f"Prompt not found: prompts/{stage_name}.md")
         return 1
 
     # Save input prompt
     session_dir = get_session_dir(session_id)
-    input_path = session_dir / f"{task_name}.in.md"
+    input_path = session_dir / f"{stage_name}.in.md"
     _atomic_write(input_path, prompt_text)
 
-    # Set state to task name while running
-    set_session_state(socket_path, session_id, task_name, f"Running {task_name}")
+    # Set state to stage name while running
+    set_session_state(socket_path, session_id, stage_name, f"Running {stage_name}")
 
     # Run codex (resume existing thread)
-    output_path = session_dir / f"{task_name}.out.md"
+    output_path = session_dir / f"{stage_name}.out.md"
     started_at = current_time_ms()
     exit_code, cmd = run_codex(prompt_text, str(cwd), str(output_path), codex_thread_id)
     finished_at = current_time_ms()
 
     # Save run metadata
     metadata = {
-        "task": task_name,
+        "stage": stage_name,
         "session_id": session_id,
         "codex_thread_id": codex_thread_id,
         "started_at": started_at,
@@ -110,15 +111,15 @@ def run_task(session_id: str, socket_path: Path, task_name: str) -> int:
         "exit_code": exit_code,
         "cmd": cmd,
     }
-    meta_path = session_dir / f"{task_name}.json"
+    meta_path = session_dir / f"{stage_name}.json"
     _atomic_write(meta_path, json.dumps(metadata, indent=2) + "\n")
 
-    # Update status with task result and duration
+    # Update status with stage result and duration
     duration = format_duration_ms(finished_at - started_at)
     if exit_code == 0:
-        status = f"{task_name} ran for {duration}"
+        status = f"{stage_name} ran for {duration}"
     else:
-        status = f"{task_name} failed after {duration}"
+        status = f"{stage_name} failed after {duration}"
     set_session_state(socket_path, session_id, "running", status)
 
     # Print output if it was written

@@ -120,7 +120,7 @@ class Session:
     status: str = ""  # Human-readable status text
     active: bool = False  # Whether a hop ore client is connected
     tmux_pane: str | None = None  # tmux pane ID (e.g., "%1")
-    codex_thread_id: str | None = None  # Codex session ID for task resumption
+    codex_thread_id: str | None = None  # Codex session ID for stage resumption
     backlog: dict | None = None  # Original backlog item data if promoted from backlog
 
     @property

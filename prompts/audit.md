@@ -1,8 +1,8 @@
 # Code Review
 
-## Task
+## Request
 
-Review **$task** thoroughly. Trace through all logic paths until you have the complete picture. Find:
+Review **$request** thoroughly. Trace through all logic paths until you have the complete picture. Find:
 
 - **Dead/unused code** - functions, imports, variables, files with no callers
 - **Dangling references** - broken imports, missing deps, orphaned calls after refactors

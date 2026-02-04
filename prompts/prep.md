@@ -1,8 +1,8 @@
 # Background Research
 
-## Task
+## Request
 
-Build complete context for **$task**.
+Build complete context for **$request**.
 
 1. **Read the specified references** - Start with any docs, files, or areas mentioned. Understand the design and expectations.
 

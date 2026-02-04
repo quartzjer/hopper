@@ -597,13 +597,13 @@ def cmd_shipped(args: list[str]) -> int:
     return 0
 
 
-@command("task", "Run a task prompt via Codex")
-def cmd_task(args: list[str]) -> int:
-    """Run a task prompt via Codex, resuming the session's Codex thread."""
-    from hopper.task import run_task
+@command("code", "Run a stage prompt via Codex")
+def cmd_code(args: list[str]) -> int:
+    """Run a stage prompt via Codex, resuming the session's Codex thread."""
+    from hopper.code import run_code
 
-    parser = make_parser("task", "Run a prompts/<task>.md file via Codex for a session.")
-    parser.add_argument("task", help="Task name (matches prompts/<task>.md)")
+    parser = make_parser("code", "Run a prompts/<stage>.md file via Codex for a session.")
+    parser.add_argument("stage", help="Stage name (matches prompts/<stage>.md)")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -624,7 +624,13 @@ def cmd_task(args: list[str]) -> int:
     if err := validate_hopper_sid():
         return err
 
-    return run_task(session_id, _socket(), parsed.task)
+    # Read directions from stdin (heredoc)
+    request = sys.stdin.read().strip()
+    if not request:
+        print("No directions provided. Use: hop code <stage> <<'EOF'\\n<directions>\\nEOF")
+        return 1
+
+    return run_code(session_id, _socket(), parsed.stage, request)
 
 
 @command("backlog", "Manage backlog items")

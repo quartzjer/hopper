@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 from hopper import __version__
 from hopper.cli import (
+    cmd_code,
     cmd_config,
     cmd_ore,
     cmd_ping,
     cmd_screenshot,
     cmd_shovel,
     cmd_status,
-    cmd_task,
     cmd_up,
     get_hopper_sid,
     main,
@@ -1000,58 +1000,76 @@ def test_shipped_success(capsys):
     assert "Ship complete" in status
 
 
-# Tests for task command
+# Tests for code command
 
 
-def test_task_help(capsys):
-    """task --help shows help and returns 0."""
-    result = cmd_task(["--help"])
+def test_code_help(capsys):
+    """code --help shows help and returns 0."""
+    result = cmd_code(["--help"])
     assert result == 0
     captured = capsys.readouterr()
-    assert "usage: hop task" in captured.out
-    assert "task" in captured.out
+    assert "usage: hop code" in captured.out
+    assert "stage" in captured.out
 
 
-def test_task_missing_args(capsys):
-    """task requires task name argument."""
-    result = cmd_task([])
+def test_code_missing_args(capsys):
+    """code requires stage name argument."""
+    result = cmd_code([])
     assert result == 1
     captured = capsys.readouterr()
     assert "error:" in captured.out
 
 
-def test_task_requires_hopper_sid(capsys):
-    """task returns 1 when HOPPER_SID not set."""
+def test_code_requires_hopper_sid(capsys):
+    """code returns 1 when HOPPER_SID not set."""
     env = os.environ.copy()
     env.pop("HOPPER_SID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.cli.require_server", return_value=None):
-            result = cmd_task(["audit"])
+            result = cmd_code(["audit"])
     assert result == 1
     captured = capsys.readouterr()
     assert "HOPPER_SID not set" in captured.out
 
 
-def test_task_validates_hopper_sid(capsys):
-    """task validates HOPPER_SID exists on server."""
+def test_code_validates_hopper_sid(capsys):
+    """code validates HOPPER_SID exists on server."""
     with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
         with patch("hopper.cli.require_server", return_value=None):
             with patch("hopper.client.session_exists", return_value=False):
-                result = cmd_task(["audit"])
+                result = cmd_code(["audit"])
     assert result == 1
     captured = capsys.readouterr()
     assert "not found or archived" in captured.out
 
 
-def test_task_dispatches_to_run_task(capsys):
-    """task dispatches to run_task on valid input."""
+def test_code_requires_stdin(capsys):
+    """code returns 1 when no stdin provided."""
+    from io import StringIO
+
     with patch.dict(os.environ, {"HOPPER_SID": "test-1234"}):
         with patch("hopper.cli.require_server", return_value=None):
             with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.task.run_task", return_value=0) as mock_run:
-                    result = cmd_task(["audit"])
+                with patch("sys.stdin", StringIO("")):
+                    result = cmd_code(["audit"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "No directions provided" in captured.out
+
+
+def test_code_dispatches_to_run_code(capsys):
+    """code dispatches to run_code on valid input."""
+    from io import StringIO
+
+    with patch.dict(os.environ, {"HOPPER_SID": "test-1234"}):
+        with patch("hopper.cli.require_server", return_value=None):
+            with patch("hopper.client.session_exists", return_value=True):
+                with patch("sys.stdin", StringIO("my directions")):
+                    with patch("hopper.code.run_code", return_value=0) as mock_run:
+                        result = cmd_code(["audit"])
     assert result == 0
     mock_run.assert_called_once()
     args = mock_run.call_args[0]
     assert args[0] == "test-1234"  # session_id from env
-    assert args[2] == "audit"  # task_name
+    assert args[2] == "audit"  # stage_name
+    assert args[3] == "my directions"  # request from stdin

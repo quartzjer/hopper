@@ -1,10 +1,10 @@
-"""Tests for the task runner module."""
+"""Tests for the code runner module."""
 
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from hopper.task import run_task
+from hopper.code import run_code
 
 MOCK_CMD = [
     "codex",
@@ -38,27 +38,27 @@ def _mock_response(
     }
 
 
-class TestRunTask:
+class TestRunCode:
     def test_session_not_found(self, capsys):
         """Returns 1 when session doesn't exist."""
-        with patch("hopper.task.connect", return_value={"session": None}):
-            exit_code = run_task("sid", Path("/tmp/test.sock"), "audit")
+        with patch("hopper.code.connect", return_value={"session": None}):
+            exit_code = run_code("sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert "not found" in capsys.readouterr().out
 
     def test_not_processing_stage(self, capsys):
         """Returns 1 when session is not in processing stage."""
-        with patch("hopper.task.connect", return_value=_mock_response(stage="ore")):
-            exit_code = run_task("test-1234", Path("/tmp/test.sock"), "audit")
+        with patch("hopper.code.connect", return_value=_mock_response(stage="ore")):
+            exit_code = run_code("test-1234", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert "not in processing stage" in capsys.readouterr().out
 
     def test_missing_codex_thread_id(self, capsys):
         """Returns 1 with helpful message when codex_thread_id is missing."""
-        with patch("hopper.task.connect", return_value=_mock_response(codex_thread_id=None)):
-            exit_code = run_task("test-1234", Path("/tmp/test.sock"), "audit")
+        with patch("hopper.code.connect", return_value=_mock_response(codex_thread_id=None)):
+            exit_code = run_code("test-1234", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         output = capsys.readouterr().out
@@ -67,8 +67,8 @@ class TestRunTask:
 
     def test_empty_codex_thread_id(self, capsys):
         """Returns 1 when codex_thread_id is empty string."""
-        with patch("hopper.task.connect", return_value=_mock_response(codex_thread_id="")):
-            exit_code = run_task("test-1234", Path("/tmp/test.sock"), "audit")
+        with patch("hopper.code.connect", return_value=_mock_response(codex_thread_id="")):
+            exit_code = run_code("test-1234", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert "no Codex thread ID" in capsys.readouterr().out
@@ -82,29 +82,29 @@ class TestRunTask:
         worktree.mkdir(parents=True)
 
         with (
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=None),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=None),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
         ):
-            exit_code = run_task("test-sid", Path("/tmp/test.sock"), "audit")
+            exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert "worktree" in capsys.readouterr().out
 
     def test_prompt_not_found(self, tmp_path, monkeypatch, capsys):
-        """Returns 1 when task prompt doesn't exist."""
+        """Returns 1 when stage prompt doesn't exist."""
         session_dir = tmp_path / "sessions" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
 
         with (
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=None),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
-            patch("hopper.task.prompt.load", side_effect=FileNotFoundError("nope")),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=None),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.prompt.load", side_effect=FileNotFoundError("nope")),
         ):
-            exit_code = run_task("test-sid", Path("/tmp/test.sock"), "nonexistent")
+            exit_code = run_code("test-sid", Path("/tmp/test.sock"), "nonexistent", "test request")
 
         assert exit_code == 1
         assert "not found" in capsys.readouterr().out
@@ -131,14 +131,14 @@ class TestRunTask:
         mock_project.path = str(tmp_path / "project")
 
         with (
-            patch("hopper.task.prompt.load", return_value="prompt text"),
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=mock_project),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
-            patch("hopper.task.set_session_state", side_effect=mock_set_state),
-            patch("hopper.task.run_codex", side_effect=mock_run_codex),
+            patch("hopper.code.prompt.load", return_value="prompt text"),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=mock_project),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.set_session_state", side_effect=mock_set_state),
+            patch("hopper.code.run_codex", side_effect=mock_run_codex),
         ):
-            exit_code = run_task("test-sid", Path("/tmp/test.sock"), "audit")
+            exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 0
         assert state_calls[0] == ("audit", "Running audit")
@@ -157,7 +157,7 @@ class TestRunTask:
 
         # Metadata saved with codex_thread_id
         meta = json.loads((session_dir / "audit.json").read_text())
-        assert meta["task"] == "audit"
+        assert meta["stage"] == "audit"
         assert meta["session_id"] == "test-sid"
         assert meta["codex_thread_id"] == THREAD_ID
         assert meta["exit_code"] == 0
@@ -179,14 +179,14 @@ class TestRunTask:
             return True
 
         with (
-            patch("hopper.task.prompt.load", return_value="prompt text"),
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=None),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
-            patch("hopper.task.set_session_state", side_effect=mock_set_state),
-            patch("hopper.task.run_codex", return_value=(1, MOCK_CMD)),
+            patch("hopper.code.prompt.load", return_value="prompt text"),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=None),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.set_session_state", side_effect=mock_set_state),
+            patch("hopper.code.run_codex", return_value=(1, MOCK_CMD)),
         ):
-            exit_code = run_task("test-sid", Path("/tmp/test.sock"), "audit")
+            exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert state_calls[-1][0] == "running"
@@ -198,8 +198,8 @@ class TestRunTask:
 
     def test_server_unreachable(self, capsys):
         """Returns 1 when server connection fails."""
-        with patch("hopper.task.connect", return_value=None):
-            exit_code = run_task("sid", Path("/tmp/test.sock"), "audit")
+        with patch("hopper.code.connect", return_value=None):
+            exit_code = run_code("sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
         assert "Failed to connect" in capsys.readouterr().out
@@ -221,18 +221,19 @@ class TestRunTask:
         mock_project.path = "/path/to/project"
 
         with (
-            patch("hopper.task.prompt.load", side_effect=mock_load),
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=mock_project),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
-            patch("hopper.task.set_session_state", return_value=True),
-            patch("hopper.task.run_codex", return_value=(0, MOCK_CMD)),
+            patch("hopper.code.prompt.load", side_effect=mock_load),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=mock_project),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.set_session_state", return_value=True),
+            patch("hopper.code.run_codex", return_value=(0, MOCK_CMD)),
         ):
-            run_task("test-sid", Path("/tmp/test.sock"), "audit")
+            run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
         # Single load with context
         assert len(load_calls) == 1
         assert load_calls[0][0] == "audit"
+        assert load_calls[0][1]["request"] == "test request"
         assert load_calls[0][1]["project"] == "my-project"
         assert load_calls[0][1]["dir"] == "/path/to/project"
         assert load_calls[0][1]["scope"] == "build widget"
@@ -252,14 +253,14 @@ class TestRunTask:
             return 0, MOCK_CMD
 
         with (
-            patch("hopper.task.prompt.load", return_value="the prompt"),
-            patch("hopper.task.connect", return_value=_mock_response()),
-            patch("hopper.task.find_project", return_value=None),
-            patch("hopper.task.get_session_dir", return_value=session_dir),
-            patch("hopper.task.set_session_state", return_value=True),
-            patch("hopper.task.run_codex", side_effect=mock_run_codex),
+            patch("hopper.code.prompt.load", return_value="the prompt"),
+            patch("hopper.code.connect", return_value=_mock_response()),
+            patch("hopper.code.find_project", return_value=None),
+            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.set_session_state", return_value=True),
+            patch("hopper.code.run_codex", side_effect=mock_run_codex),
         ):
-            run_task("test-sid", Path("/tmp/test.sock"), "audit")
+            run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert input_existed == [True]
         assert (session_dir / "audit.in.md").read_text() == "the prompt"

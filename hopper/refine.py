@@ -58,7 +58,7 @@ class RefineRunner(BaseRunner):
                 return 1
             self.shovel_content = shovel_path.read_text()
 
-            # Bootstrap Codex session for tasks
+            # Bootstrap Codex session for stages
             err = self._bootstrap_codex()
             if err is not None:
                 return err
@@ -66,10 +66,10 @@ class RefineRunner(BaseRunner):
         return None
 
     def _bootstrap_codex(self) -> int | None:
-        """Bootstrap a Codex session using task.md prompt.
+        """Bootstrap a Codex session using code.md prompt.
 
         Creates a new Codex session in the worktree and stores the thread_id
-        on the server for subsequent hop task calls to resume.
+        on the server for subsequent hop code calls to resume.
 
         Returns:
             Exit code on failure, None on success.
@@ -77,7 +77,7 @@ class RefineRunner(BaseRunner):
         sid = self.session_id[:SHORT_ID_LEN]
         print(f"Bootstrapping Codex session for {sid}...")
 
-        # Build context for task prompt
+        # Build context for code prompt
         context: dict[str, str] = {}
         if self.project_name:
             context["project"] = self.project_name
@@ -85,15 +85,15 @@ class RefineRunner(BaseRunner):
             context["dir"] = self.project_dir
 
         try:
-            task_prompt = prompt.load("task", context=context if context else None)
+            code_prompt = prompt.load("code", context=context if context else None)
         except FileNotFoundError:
-            print("Task prompt not found: prompts/task.md")
+            print("Prompt not found: prompts/code.md")
             return 1
 
-        exit_code, thread_id = bootstrap_codex(task_prompt, str(self.worktree_path))
+        exit_code, thread_id = bootstrap_codex(code_prompt, str(self.worktree_path))
 
         if exit_code == 127:
-            print("codex command not found. Install codex to use task features.")
+            print("codex command not found. Install codex to use code features.")
             return 1
         if exit_code != 0:
             print(f"Codex bootstrap failed (exit {exit_code}).")
