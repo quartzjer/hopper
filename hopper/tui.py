@@ -1,5 +1,6 @@
 """TUI for managing coding agents using Textual."""
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from hopper.sessions import (
     create_session,
     format_age,
     format_uptime,
+    get_session_dir,
     save_sessions,
 )
 
@@ -360,6 +362,21 @@ class BacklogEditScreen(TextInputScreen):
 
     def on_submit(self, button: Button, text: str) -> None:
         action = "promote" if button.id == "btn-promote" else "save"
+        self.dismiss((action, text))
+
+
+class ShovelReviewScreen(TextInputScreen):
+    """Modal screen for reviewing/editing the shovel-ready prompt before processing."""
+
+    MODAL_TITLE = "Review Shovel Prompt"
+
+    def compose_buttons(self) -> ComposeResult:
+        yield Button("Cancel", id="btn-cancel", variant="default")
+        yield Button("Process", id="btn-process", variant="default")
+        yield Button("Save", id="btn-save", variant="primary")
+
+    def on_submit(self, button: Button, text: str) -> None:
+        action = "process" if button.id == "btn-process" else "save"
         self.dismiss((action, text))
 
 
@@ -872,6 +889,9 @@ class HopperApp(App):
             # Session has a connected runner - switch to its window
             if not switch_to_pane(session.tmux_pane):
                 self.notify("Failed to switch to window", severity="error")
+        elif session.stage == "processing" and session.state == "ready":
+            # Shovel complete, ready for processing - review before starting
+            self._review_shovel(session, project_path)
         else:
             # Session is not active - spawn runner based on stage
             if not spawn_claude(session.id, project_path, stage=session.stage):
@@ -920,6 +940,29 @@ class HopperApp(App):
                 self.refresh_backlog()
 
         self.push_screen(BacklogEditScreen(initial_text=item.description), on_edit_result)
+
+    def _review_shovel(self, session: Session, project_path: str | None) -> None:
+        """Open the shovel review modal for a processing-ready session."""
+        shovel_path = get_session_dir(session.id) / "shovel.md"
+        if not shovel_path.exists():
+            self.notify("Shovel prompt not found", severity="error")
+            return
+
+        shovel_text = shovel_path.read_text()
+
+        def on_review_result(result: tuple[str, str] | None) -> None:
+            if result is None:
+                return  # Cancelled
+            action, text = result
+            # Write edited text back to shovel.md
+            tmp_path = shovel_path.with_suffix(".md.tmp")
+            tmp_path.write_text(text)
+            os.replace(tmp_path, shovel_path)
+            if action == "process":
+                spawn_claude(session.id, project_path, foreground=False, stage="processing")
+            self.refresh_table()
+
+        self.push_screen(ShovelReviewScreen(initial_text=shovel_text), on_review_result)
 
     def action_delete_backlog(self) -> None:
         """Delete the selected backlog item."""

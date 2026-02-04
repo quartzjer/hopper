@@ -1143,6 +1143,232 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
         assert spawned[0]["fg"] is False
 
 
+# Tests for ShovelReviewScreen
+
+
+class ShovelReviewTestApp(App):
+    """Test app wrapper for ShovelReviewScreen."""
+
+    def __init__(self, initial_text: str = ""):
+        super().__init__()
+        self.review_result = "not_set"  # sentinel value
+        self._initial_text = initial_text
+
+    def on_mount(self) -> None:
+        from hopper.tui import ShovelReviewScreen
+
+        def capture_result(r):
+            self.review_result = r
+
+        self.push_screen(ShovelReviewScreen(initial_text=self._initial_text), capture_result)
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_prefills_text():
+    """ShovelReviewScreen should show pre-filled text."""
+    from textual.widgets import TextArea
+
+    app = ShovelReviewTestApp(initial_text="Shovel-ready prompt content")
+    async with app.run_test():
+        ta = app.screen.query_one(TextArea)
+        assert ta.text == "Shovel-ready prompt content"
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_cancel_escape():
+    """Escape should dismiss the review screen with None."""
+    app = ShovelReviewTestApp(initial_text="Some text")
+    async with app.run_test() as pilot:
+        await pilot.press("escape")
+        assert app.review_result is None
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_save():
+    """Save button should return ('save', text)."""
+    from textual.widgets import TextArea
+
+    app = ShovelReviewTestApp(initial_text="Original prompt")
+    async with app.run_test() as pilot:
+        ta = app.screen.query_one(TextArea)
+        ta.clear()
+        ta.insert("Edited prompt")
+        # Tab to Cancel, Process, Save (3rd button)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Process
+        await pilot.press("tab")  # Save
+        await pilot.press("enter")
+        assert app.review_result == ("save", "Edited prompt")
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_process():
+    """Process button should return ('process', text)."""
+    from textual.widgets import TextArea
+
+    app = ShovelReviewTestApp(initial_text="Process this prompt")
+    async with app.run_test() as pilot:
+        ta = app.screen.query_one(TextArea)
+        assert ta.text == "Process this prompt"
+        # Tab to Cancel, then Process (2nd button)
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Process
+        await pilot.press("enter")
+        assert app.review_result == ("process", "Process this prompt")
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_empty_validation():
+    """Empty text should not submit."""
+    app = ShovelReviewTestApp(initial_text="")
+    async with app.run_test() as pilot:
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Process
+        await pilot.press("tab")  # Save
+        await pilot.press("enter")
+        assert app.review_result == "not_set"
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_arrow_navigation():
+    """Arrow keys should navigate between buttons."""
+    app = ShovelReviewTestApp(initial_text="Text")
+    async with app.run_test() as pilot:
+        await pilot.press("tab")
+        assert app.screen.focused.id == "btn-cancel"
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-process"
+        await pilot.press("right")
+        assert app.screen.focused.id == "btn-save"
+        await pilot.press("right")  # wraps
+        assert app.screen.focused.id == "btn-cancel"
+
+
+@pytest.mark.asyncio
+async def test_enter_on_processing_ready_opens_shovel_review(temp_config):
+    """Enter on a processing/ready session should open ShovelReviewScreen."""
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShovelReviewScreen
+
+    session = Session(id="aaaa1111-uuid", stage="processing", state="ready", created_at=1000)
+    # Write a shovel.md for this session
+    session_dir = get_session_dir(session.id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "shovel.md").write_text("The shovel prompt")
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        assert isinstance(app.screen, ShovelReviewScreen)
+        from textual.widgets import TextArea
+
+        ta = app.screen.query_one(TextArea)
+        assert ta.text == "The shovel prompt"
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_save_writes_file(temp_config):
+    """Save from review should write edited text back to shovel.md."""
+    from textual.widgets import TextArea
+
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShovelReviewScreen
+
+    session = Session(id="aaaa1111-uuid", stage="processing", state="ready", created_at=1000)
+    session_dir = get_session_dir(session.id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "shovel.md").write_text("Original shovel")
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        assert isinstance(app.screen, ShovelReviewScreen)
+        ta = app.screen.query_one(TextArea)
+        ta.clear()
+        ta.insert("Edited shovel")
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Process
+        await pilot.press("tab")  # Save
+        await pilot.press("enter")
+        assert (session_dir / "shovel.md").read_text() == "Edited shovel"
+
+
+@pytest.mark.asyncio
+async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
+    """Process from review should write file and spawn refine in background."""
+    from textual.widgets import TextArea
+
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShovelReviewScreen
+
+    session = Session(
+        id="aaaa1111-uuid",
+        stage="processing",
+        state="ready",
+        created_at=1000,
+        project="testproj",
+    )
+    session_dir = get_session_dir(session.id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "shovel.md").write_text("Shovel content")
+
+    spawned = []
+    monkeypatch.setattr(
+        "hopper.tui.spawn_claude",
+        lambda sid, path, foreground=True, stage="ore": spawned.append(
+            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        ),
+    )
+    monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        assert isinstance(app.screen, ShovelReviewScreen)
+        ta = app.screen.query_one(TextArea)
+        assert ta.text == "Shovel content"
+        ta.clear()
+        ta.insert("Edited for processing")
+        # Tab to Process button
+        await pilot.press("tab")  # Cancel
+        await pilot.press("tab")  # Process
+        await pilot.press("enter")
+
+        # File should be updated
+        assert (session_dir / "shovel.md").read_text() == "Edited for processing"
+        # Should have spawned refine in background
+        assert len(spawned) == 1
+        assert spawned[0]["sid"] == session.id
+        assert spawned[0]["fg"] is False
+        assert spawned[0]["stage"] == "processing"
+
+
+@pytest.mark.asyncio
+async def test_enter_on_non_ready_processing_spawns_directly(monkeypatch, temp_config):
+    """Enter on a processing session that is NOT ready should spawn directly."""
+    session = Session(id="aaaa1111-uuid", stage="processing", state="running", created_at=1000)
+    spawned = []
+    monkeypatch.setattr(
+        "hopper.tui.spawn_claude",
+        lambda sid, path, foreground=True, stage="ore": spawned.append(
+            {"sid": sid, "stage": stage}
+        ),
+    )
+    monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        # Should spawn directly, not open modal
+        assert not isinstance(app.screen, type(None))
+        assert len(spawned) == 1
+        assert spawned[0]["stage"] == "processing"
+
+
 # Tests for LegendScreen
 
 
