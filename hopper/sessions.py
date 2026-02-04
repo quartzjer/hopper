@@ -2,38 +2,12 @@
 
 import json
 import os
-import sys
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from hopper.config import ARCHIVED_FILE, SESSIONS_DIR, SESSIONS_FILE
-
-
-def _check_test_isolation() -> None:
-    """Raise an error if running under pytest without path isolation.
-
-    This is a safety guard to prevent test code from accidentally writing
-    to the real user config directory. If pytest is detected and the paths
-    still point to the real config dir, something is wrong with test setup.
-    """
-    if "pytest" not in sys.modules:
-        return
-
-    # Check if paths are pointing to the real user config dir
-    # If properly isolated, they should be pointing to a tmp_path
-    from platformdirs import user_data_dir
-
-    real_data_dir = Path(user_data_dir("hopper"))
-    if SESSIONS_FILE.is_relative_to(real_data_dir):
-        raise RuntimeError(
-            "Test isolation failure: sessions.py is trying to write to the real "
-            f"config directory ({real_data_dir}). Ensure the isolate_config fixture "
-            "from conftest.py is active. This usually means a test is missing the "
-            "fixture or running outside pytest."
-        )
-
+from hopper import config
 
 SHORT_ID_LEN = 8  # Standard short ID length (first segment of UUID)
 
@@ -169,16 +143,17 @@ class Session:
 
 def get_session_dir(session_id: str) -> Path:
     """Get the directory for a session."""
-    return SESSIONS_DIR / session_id
+    return config.hopper_dir() / "sessions" / session_id
 
 
 def load_sessions() -> list[Session]:
     """Load active sessions from JSONL file."""
-    if not SESSIONS_FILE.exists():
+    sessions_file = config.hopper_dir() / "sessions.jsonl"
+    if not sessions_file.exists():
         return []
 
     sessions = []
-    with open(SESSIONS_FILE) as f:
+    with open(sessions_file) as f:
         for line in f:
             line = line.strip()
             if line:
@@ -189,15 +164,15 @@ def load_sessions() -> list[Session]:
 
 def save_sessions(sessions: list[Session]) -> None:
     """Atomically save sessions to JSONL file."""
-    _check_test_isolation()
-    SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    sessions_file = config.hopper_dir() / "sessions.jsonl"
+    sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_path = SESSIONS_FILE.with_suffix(".jsonl.tmp")
+    tmp_path = sessions_file.with_suffix(".jsonl.tmp")
     with open(tmp_path, "w") as f:
         for session in sessions:
             f.write(json.dumps(session.to_dict()) + "\n")
 
-    os.replace(tmp_path, SESSIONS_FILE)
+    os.replace(tmp_path, sessions_file)
 
 
 def create_session(sessions: list[Session], project: str, scope: str = "") -> Session:
@@ -245,14 +220,14 @@ def archive_session(sessions: list[Session], session_id: str) -> Session | None:
     The session directory is left intact.
     Returns the archived session or None if not found.
     """
-    _check_test_isolation()
     for i, session in enumerate(sessions):
         if session.id == session_id:
             archived = sessions.pop(i)
 
             # Append to archive file
-            ARCHIVED_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(ARCHIVED_FILE, "a") as f:
+            archived_file = config.hopper_dir() / "archived.jsonl"
+            archived_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(archived_file, "a") as f:
                 f.write(json.dumps(archived.to_dict()) + "\n")
 
             save_sessions(sessions)

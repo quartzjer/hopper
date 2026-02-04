@@ -17,22 +17,9 @@ from hopper.projects import (
 
 
 @pytest.fixture
-def mock_config(tmp_path, monkeypatch):
-    """Fixture to isolate tests from real user config."""
-    config_file = tmp_path / "config.json"
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
-    monkeypatch.setattr("hopper.config.DATA_DIR", tmp_path)
-    monkeypatch.setattr("hopper.projects.load_config", lambda: _load_json(config_file))
-    return config_file
-
-
-def _load_json(path):
-    """Helper to load config file."""
-    import json
-
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text())
+def mock_config(tmp_path):
+    """Return the config file path (isolation handled by conftest)."""
+    return tmp_path / "config.json"
 
 
 @pytest.fixture

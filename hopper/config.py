@@ -5,13 +5,10 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-DATA_DIR = Path(user_data_dir("hopper"))
-SOCKET_PATH = DATA_DIR / "server.sock"
-SESSIONS_FILE = DATA_DIR / "sessions.jsonl"
-ARCHIVED_FILE = DATA_DIR / "archived.jsonl"
-SESSIONS_DIR = DATA_DIR / "sessions"
-CONFIG_FILE = DATA_DIR / "config.json"
-BACKLOG_FILE = DATA_DIR / "backlog.jsonl"
+
+def hopper_dir() -> Path:
+    """Return the hopper data directory for this user/OS."""
+    return Path(user_data_dir("hopper"))
 
 
 def load_config() -> dict[str, str]:
@@ -20,10 +17,11 @@ def load_config() -> dict[str, str]:
     Returns:
         Config dict, empty if file doesn't exist.
     """
-    if not CONFIG_FILE.exists():
+    config_file = hopper_dir() / "config.json"
+    if not config_file.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text())
+        return json.loads(config_file.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -34,7 +32,9 @@ def save_config(config: dict[str, str]) -> None:
     Args:
         config: Config dict to save.
     """
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CONFIG_FILE.with_suffix(".tmp")
+    data_dir = hopper_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    config_file = data_dir / "config.json"
+    tmp = config_file.with_suffix(".tmp")
     tmp.write_text(json.dumps(config, indent=2) + "\n")
-    tmp.replace(CONFIG_FILE)
+    tmp.replace(config_file)

@@ -77,13 +77,12 @@ def test_save_and_load_backlog(temp_config):
 
 def test_save_backlog_atomic(temp_config):
     """Atomic write: no .tmp file left behind."""
-    from hopper.config import BACKLOG_FILE
-
     items = [BacklogItem(id="id-1", project="p", description="d", created_at=1000)]
     save_backlog(items)
 
-    assert BACKLOG_FILE.exists()
-    assert not BACKLOG_FILE.with_suffix(".jsonl.tmp").exists()
+    backlog_file = temp_config / "backlog.jsonl"
+    assert backlog_file.exists()
+    assert not backlog_file.with_suffix(".jsonl.tmp").exists()
 
 
 def test_add_backlog_item(temp_config):

@@ -188,7 +188,7 @@ def test_ore_delegates_to_runner(capsys):
 def test_ping_command_no_server(capsys):
     """Ping command returns 1 when server not running."""
     with patch.object(sys, "argv", ["hopper", "ping"]):
-        with patch("hopper.cli.SOCKET_PATH", "/tmp/nonexistent.sock"):
+        with patch("hopper.client.connect", return_value=None):
             result = main()
     assert result == 1
     captured = capsys.readouterr()
@@ -266,9 +266,8 @@ def test_up_command_fails_if_server_running(capsys):
     assert "Server already running" in captured.out
 
 
-def test_up_command_requires_name_config(tmp_path, monkeypatch, capsys):
+def test_up_command_requires_name_config(capsys):
     """Up command returns 1 if name not configured."""
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", tmp_path / "config.json")
     with patch.object(sys, "argv", ["hopper", "up"]):
         with patch("hopper.cli.require_no_server", return_value=None):
             result = main()
@@ -281,20 +280,17 @@ def test_up_command_requires_name_config(tmp_path, monkeypatch, capsys):
 # Tests for require_config_name
 
 
-def test_require_config_name_success(tmp_path, monkeypatch):
+def test_require_config_name_success(temp_config):
     """require_config_name returns None when name is set."""
-    config_file = tmp_path / "config.json"
+    config_file = temp_config / "config.json"
     config_file.write_text('{"name": "jer"}')
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
 
     result = require_config_name()
     assert result is None
 
 
-def test_require_config_name_failure(tmp_path, monkeypatch, capsys):
+def test_require_config_name_failure(capsys):
     """require_config_name returns 1 when name not set."""
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", tmp_path / "config.json")
-
     result = require_config_name()
     assert result == 1
     captured = capsys.readouterr()
@@ -506,20 +502,18 @@ def test_config_help(capsys):
     assert "$variables" in captured.out
 
 
-def test_config_list_empty(tmp_path, monkeypatch, capsys):
+def test_config_list_empty(capsys):
     """config with no args and no config shows help message."""
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", tmp_path / "config.json")
     result = cmd_config([])
     assert result == 0
     captured = capsys.readouterr()
     assert "No config set" in captured.out
 
 
-def test_config_list_values(tmp_path, monkeypatch, capsys):
+def test_config_list_values(temp_config, capsys):
     """config with no args lists all values."""
-    config_file = tmp_path / "config.json"
+    config_file = temp_config / "config.json"
     config_file.write_text('{"name": "jer", "org": "acme"}')
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
 
     result = cmd_config([])
     assert result == 0
@@ -528,11 +522,10 @@ def test_config_list_values(tmp_path, monkeypatch, capsys):
     assert "org=acme" in captured.out
 
 
-def test_config_get_existing(tmp_path, monkeypatch, capsys):
+def test_config_get_existing(temp_config, capsys):
     """config name returns value when set."""
-    config_file = tmp_path / "config.json"
+    config_file = temp_config / "config.json"
     config_file.write_text('{"name": "jer"}')
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
 
     result = cmd_config(["name"])
     assert result == 0
@@ -540,9 +533,8 @@ def test_config_get_existing(tmp_path, monkeypatch, capsys):
     assert "jer" in captured.out
 
 
-def test_config_get_missing(tmp_path, monkeypatch, capsys):
+def test_config_get_missing(capsys):
     """config name returns error when not set."""
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", tmp_path / "config.json")
 
     result = cmd_config(["name"])
     assert result == 1
@@ -550,11 +542,9 @@ def test_config_get_missing(tmp_path, monkeypatch, capsys):
     assert "Config 'name' not set" in captured.out
 
 
-def test_config_set_value(tmp_path, monkeypatch, capsys):
+def test_config_set_value(temp_config, capsys):
     """config name value sets the value."""
-    config_file = tmp_path / "config.json"
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
-    monkeypatch.setattr("hopper.config.DATA_DIR", tmp_path)
+    config_file = temp_config / "config.json"
 
     result = cmd_config(["name", "jer"])
     assert result == 0
@@ -568,12 +558,10 @@ def test_config_set_value(tmp_path, monkeypatch, capsys):
     assert saved == {"name": "jer"}
 
 
-def test_config_set_updates_existing(tmp_path, monkeypatch, capsys):
+def test_config_set_updates_existing(temp_config, capsys):
     """config name value updates existing config."""
-    config_file = tmp_path / "config.json"
+    config_file = temp_config / "config.json"
     config_file.write_text('{"name": "old", "other": "keep"}')
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", config_file)
-    monkeypatch.setattr("hopper.config.DATA_DIR", tmp_path)
 
     result = cmd_config(["name", "new"])
     assert result == 0
@@ -800,15 +788,13 @@ def test_shovel_empty_stdin(capsys):
     assert "No input received" in captured.out
 
 
-def test_shovel_saves_file(tmp_path, monkeypatch, capsys):
+def test_shovel_saves_file(temp_config, capsys):
     """shovel saves prompt to session directory and updates state."""
     from io import StringIO
 
     session_id = "test-session-1234"
-    session_dir = tmp_path / session_id
+    session_dir = temp_config / "sessions" / session_id
     prompt_text = "# Shovel-ready prompt\n\nDo the thing.\n"
-
-    monkeypatch.setattr("hopper.sessions.SESSIONS_DIR", tmp_path)
 
     with patch.dict(os.environ, {"HOPPER_SID": session_id}):
         with patch("hopper.client.ping", return_value=True):

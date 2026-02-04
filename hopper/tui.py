@@ -669,7 +669,9 @@ class HopperApp(App):
                 table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, SessionTable.COL_AGE, row.age)
                 table.update_cell(
-                    row.id, SessionTable.COL_STATUS_TEXT, format_status_label(row.status_text, row.status)
+                    row.id,
+                    SessionTable.COL_STATUS_TEXT,
+                    format_status_label(row.status_text, row.status),
                 )
             else:
                 # Add new row (before hint if present)

@@ -2,29 +2,11 @@
 
 import json
 import os
-import sys
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 
-from hopper.config import BACKLOG_FILE
+from hopper import config
 from hopper.sessions import SHORT_ID_LEN, current_time_ms
-
-
-def _check_test_isolation() -> None:
-    """Raise an error if running under pytest without path isolation."""
-    if "pytest" not in sys.modules:
-        return
-
-    from platformdirs import user_data_dir
-
-    real_data_dir = Path(user_data_dir("hopper"))
-    if BACKLOG_FILE.is_relative_to(real_data_dir):
-        raise RuntimeError(
-            "Test isolation failure: backlog.py is trying to write to the real "
-            f"config directory ({real_data_dir}). Ensure the isolate_config fixture "
-            "from conftest.py is active."
-        )
 
 
 @dataclass
@@ -64,11 +46,12 @@ class BacklogItem:
 
 def load_backlog() -> list[BacklogItem]:
     """Load backlog items from JSONL file."""
-    if not BACKLOG_FILE.exists():
+    backlog_file = config.hopper_dir() / "backlog.jsonl"
+    if not backlog_file.exists():
         return []
 
     items = []
-    with open(BACKLOG_FILE) as f:
+    with open(backlog_file) as f:
         for line in f:
             line = line.strip()
             if line:
@@ -79,15 +62,15 @@ def load_backlog() -> list[BacklogItem]:
 
 def save_backlog(items: list[BacklogItem]) -> None:
     """Atomically save backlog items to JSONL file."""
-    _check_test_isolation()
-    BACKLOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    backlog_file = config.hopper_dir() / "backlog.jsonl"
+    backlog_file.parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_path = BACKLOG_FILE.with_suffix(".jsonl.tmp")
+    tmp_path = backlog_file.with_suffix(".jsonl.tmp")
     with open(tmp_path, "w") as f:
         for item in items:
             f.write(json.dumps(item.to_dict()) + "\n")
 
-    os.replace(tmp_path, BACKLOG_FILE)
+    os.replace(tmp_path, backlog_file)
 
 
 def add_backlog_item(

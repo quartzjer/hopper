@@ -6,9 +6,8 @@ from hopper import prompt
 
 
 @pytest.fixture
-def mock_config(tmp_path, monkeypatch):
-    """Fixture to isolate tests from real user config."""
-    monkeypatch.setattr("hopper.config.CONFIG_FILE", tmp_path / "config.json")
+def mock_config(tmp_path):
+    """Return the config file path (isolation handled by conftest)."""
     return tmp_path / "config.json"
 
 

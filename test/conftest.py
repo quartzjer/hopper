@@ -2,36 +2,17 @@
 
 import pytest
 
-from hopper import backlog, config, sessions
+from hopper import config
 
 
 @pytest.fixture(autouse=True)
 def isolate_config(tmp_path, monkeypatch):
     """Isolate all tests from the real config directory.
 
-    This fixture runs automatically for every test, ensuring that:
-    - Sessions are never written to the real ~/.local/share/hopper/
-    - Each test gets a fresh, isolated temporary directory
-    - Test data cannot leak to production files
-
-    The autouse=True ensures this runs even if developers forget to
-    explicitly request the fixture.
+    Redirects hopper_dir() to a temporary directory so all file paths
+    (sessions, backlog, config, socket) resolve there automatically.
     """
-    # Patch both config module (source of truth) and sessions module (where it's imported)
-    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "SOCKET_PATH", tmp_path / "server.sock")
-    monkeypatch.setattr(config, "SESSIONS_FILE", tmp_path / "sessions.jsonl")
-    monkeypatch.setattr(config, "ARCHIVED_FILE", tmp_path / "archived.jsonl")
-    monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path / "sessions")
-    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config.json")
-
-    monkeypatch.setattr(sessions, "SESSIONS_FILE", tmp_path / "sessions.jsonl")
-    monkeypatch.setattr(sessions, "ARCHIVED_FILE", tmp_path / "archived.jsonl")
-    monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "sessions")
-
-    monkeypatch.setattr(config, "BACKLOG_FILE", tmp_path / "backlog.jsonl")
-    monkeypatch.setattr(backlog, "BACKLOG_FILE", tmp_path / "backlog.jsonl")
-
+    monkeypatch.setattr(config, "hopper_dir", lambda: tmp_path)
     return tmp_path
 
 

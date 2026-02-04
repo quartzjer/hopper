@@ -2,11 +2,17 @@ import argparse
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import setproctitle
 
-from hopper import __version__
-from hopper.config import DATA_DIR, SOCKET_PATH
+from hopper import __version__, config
+
+
+def _socket() -> Path:
+    """Return the server socket path (late-binding, safe for tests)."""
+    return config.hopper_dir() / "server.sock"
+
 
 # Command registry: name -> (handler, description)
 # Handler signature: (args: list[str]) -> int
@@ -73,7 +79,7 @@ def require_server() -> int | None:
     """Check that the server is running. Returns exit code on failure, None on success."""
     from hopper.client import ping
 
-    if not ping(SOCKET_PATH):
+    if not ping(_socket()):
         print("Server not running. Start it with: hop up")
         return 1
     return None
@@ -83,7 +89,7 @@ def require_no_server() -> int | None:
     """Check that the server is NOT running. Returns exit code on failure, None on success."""
     from hopper.client import ping
 
-    if ping(SOCKET_PATH):
+    if ping(_socket()):
         print("Server already running.")
         return 1
     return None
@@ -126,7 +132,7 @@ def validate_hopper_sid() -> int | None:
     if not session_id:
         return None
 
-    if not session_exists(SOCKET_PATH, session_id):
+    if not session_exists(_socket(), session_id):
         print(f"Session {session_id} not found or archived.")
         print("Unset HOPPER_SID to continue: unset HOPPER_SID")
         return 1
@@ -180,9 +186,9 @@ def cmd_up(args: list[str]) -> int:
         print("    tmux new 'hop up'")
         return 1
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    config.hopper_dir().mkdir(parents=True, exist_ok=True)
     tmux_location = get_current_tmux_location()
-    return start_server_with_tui(SOCKET_PATH, tmux_location=tmux_location)
+    return start_server_with_tui(_socket(), tmux_location=tmux_location)
 
 
 @command("ore", "Run Claude for a session")
@@ -204,7 +210,7 @@ def cmd_ore(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_ore(parsed.session_id, SOCKET_PATH)
+    return run_ore(parsed.session_id, _socket())
 
 
 @command("refine", "Run refine workflow for a session")
@@ -226,7 +232,7 @@ def cmd_refine(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_refine(parsed.session_id, SOCKET_PATH)
+    return run_refine(parsed.session_id, _socket())
 
 
 @command("status", "Show or update session status")
@@ -263,7 +269,7 @@ def cmd_status(args: list[str]) -> int:
 
     if not parsed.text:
         # Show current status
-        session = get_session(SOCKET_PATH, session_id)
+        session = get_session(_socket(), session_id)
         if not session:
             print(f"Session {session_id} not found.")
             return 1
@@ -281,10 +287,10 @@ def cmd_status(args: list[str]) -> int:
         return 1
 
     # Get current status for friendly output
-    session = get_session(SOCKET_PATH, session_id)
+    session = get_session(_socket(), session_id)
     old_status = session.get("status", "") if session else ""
 
-    set_session_status(SOCKET_PATH, session_id, new_status)
+    set_session_status(_socket(), session_id, new_status)
 
     if old_status:
         print(f"Updated from '{old_status}' to '{new_status}'")
@@ -426,7 +432,7 @@ def cmd_screenshot(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    response = connect(SOCKET_PATH)
+    response = connect(_socket())
     if not response:
         print("Failed to connect to server.")
         return 1
@@ -491,7 +497,7 @@ def cmd_shovel(args: list[str]) -> int:
     os.replace(tmp_path, shovel_path)
 
     # Update session status
-    set_session_state(SOCKET_PATH, session_id, "completed", "Shovel complete")
+    set_session_state(_socket(), session_id, "completed", "Shovel complete")
 
     print(f"Saved to {shovel_path}")
     return 0
@@ -527,7 +533,7 @@ def cmd_refined(args: list[str]) -> int:
     if err := validate_hopper_sid():
         return err
 
-    set_session_state(SOCKET_PATH, session_id, "completed", "Refine complete")
+    set_session_state(_socket(), session_id, "completed", "Refine complete")
 
     print("Refine complete.")
     return 0
@@ -553,7 +559,7 @@ def cmd_task(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_task(parsed.session_id, SOCKET_PATH, parsed.task)
+    return run_task(parsed.session_id, _socket(), parsed.task)
 
 
 @command("backlog", "Manage backlog items")
@@ -614,7 +620,7 @@ def cmd_backlog(args: list[str]) -> int:
         if not project and session_id:
             if err := require_server():
                 return err
-            session = get_session(SOCKET_PATH, session_id)
+            session = get_session(_socket(), session_id)
             if session:
                 project = session.get("project", "")
 
@@ -623,9 +629,9 @@ def cmd_backlog(args: list[str]) -> int:
             return 1
 
         # Route through server if running, otherwise write directly
-        server_running = ping(SOCKET_PATH)
+        server_running = ping(_socket())
         if server_running:
-            add_backlog(SOCKET_PATH, project, description, session_id=session_id)
+            add_backlog(_socket(), project, description, session_id=session_id)
         else:
             items = load_backlog()
             add_backlog_item(items, project, description, session_id=session_id)
@@ -647,9 +653,9 @@ def cmd_backlog(args: list[str]) -> int:
             return 1
 
         # Route through server if running, otherwise write directly
-        server_running = ping(SOCKET_PATH)
+        server_running = ping(_socket())
         if server_running:
-            remove_backlog(SOCKET_PATH, item.id)
+            remove_backlog(_socket(), item.id)
         else:
             remove_backlog_item(items, item.id)
 
@@ -675,7 +681,7 @@ def cmd_ping(args: list[str]) -> int:
         return 1
 
     session_id = get_hopper_sid()
-    response = connect(SOCKET_PATH, session_id=session_id)
+    response = connect(_socket(), session_id=session_id)
     if not response:
         require_server()
         return 1
