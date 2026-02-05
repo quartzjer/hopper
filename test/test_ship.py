@@ -6,16 +6,42 @@ from unittest.mock import MagicMock, patch
 
 from hopper.ship import ShipRunner, run_ship
 
+CLAUDE_SESSIONS = {
+    "ore": {"session_id": "11111111-1111-1111-1111-111111111111", "started": False},
+    "refine": {"session_id": "22222222-2222-2222-2222-222222222222", "started": False},
+    "ship": {"session_id": "33333333-3333-3333-3333-333333333333", "started": False},
+}
+
+SHIP_SESSION_ID = CLAUDE_SESSIONS["ship"]["session_id"]
+
+
+def _claude_sessions(**stage_overrides):
+    """Return claude sessions dict with per-stage overrides."""
+    import copy
+
+    sessions = copy.deepcopy(CLAUDE_SESSIONS)
+    for stage, overrides in stage_overrides.items():
+        sessions[stage].update(overrides)
+    return sessions
+
 
 class TestShipRunner:
     def _make_runner(self, lode_id="test-session-id"):
         return ShipRunner(lode_id, Path("/tmp/test.sock"))
 
-    def _mock_response(self, state="ready", active=False, project="my-project", stage="ship"):
+    def _mock_response(
+        self, state="ready", active=False, project="my-project", stage="ship", claude=None
+    ):
         return {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": state, "active": active, "project": project, "stage": stage},
+            "lode": {
+                "state": state,
+                "active": active,
+                "project": project,
+                "stage": stage,
+                "claude": claude or _claude_sessions(),
+            },
             "lode_found": True,
         }
 
@@ -94,7 +120,12 @@ class TestShipRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(ship={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.ship.get_lode_dir", return_value=session_dir),
@@ -107,7 +138,7 @@ class TestShipRunner:
 
         assert exit_code == 0
         cmd = mock_popen.call_args[0][0]
-        assert cmd == ["claude", "--dangerously-skip-permissions", "--resume", "test-session-id"]
+        assert cmd == ["claude", "--dangerously-skip-permissions", "--resume", SHIP_SESSION_ID]
         assert mock_popen.call_args[1]["cwd"] == str(project_dir)
 
     def test_fails_if_not_ship_stage(self, capsys):
@@ -284,7 +315,12 @@ class TestShipRunner:
         mock_proc.stderr = io.BytesIO(b"Merge failed\n")
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(ship={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.ship.get_lode_dir", return_value=session_dir),
@@ -322,7 +358,12 @@ class TestShipRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(ship={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.ship.get_lode_dir", return_value=session_dir),
@@ -364,7 +405,12 @@ class TestShipRunner:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "lode": {"state": "ready", "project": "my-project", "stage": "ship"},
+                    "lode": {
+                        "state": "ready",
+                        "project": "my-project",
+                        "stage": "ship",
+                        "claude": _claude_sessions(),
+                    },
                     "lode_found": True,
                 },
             ),
@@ -414,7 +460,12 @@ class TestRunShip:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running", "project": "my-project", "stage": "ship"},
+            "lode": {
+                "state": "running",
+                "project": "my-project",
+                "stage": "ship",
+                "claude": _claude_sessions(ship={"started": True}),
+            },
             "lode_found": True,
         }
 

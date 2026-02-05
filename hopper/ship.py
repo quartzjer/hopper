@@ -12,7 +12,7 @@ class ShipRunner(BaseRunner):
     """Runs Claude for a ship-stage lode to merge work back to main."""
 
     _done_label = "Ship done"
-    _first_run_state = "ready"
+    _claude_stage = "ship"
     _done_status = "Ship complete"
     _next_stage = ""
     _always_dismiss = True
@@ -78,11 +78,9 @@ class ShipRunner(BaseRunner):
             if self.project_dir:
                 context["dir"] = self.project_dir
             initial_prompt = prompt.load("ship", context=context)
-            # Note: --session-id is Claude's flag, not ours
-            cmd = ["claude", skip, "--session-id", self.lode_id, initial_prompt]
+            cmd = ["claude", skip, "--session-id", self.claude_session_id, initial_prompt]
         else:
-            # Note: --resume is Claude's flag, not ours
-            cmd = ["claude", skip, "--resume", self.lode_id]
+            cmd = ["claude", skip, "--resume", self.claude_session_id]
 
         return cmd, cwd
 

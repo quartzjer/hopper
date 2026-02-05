@@ -15,7 +15,7 @@ class RefineRunner(BaseRunner):
     """Runs Claude for a processing-stage lode with git worktree."""
 
     _done_label = "Refine done"
-    _first_run_state = "ready"
+    _claude_stage = "refine"
     _done_status = "Refine complete"
     _next_stage = "ship"
     _always_dismiss = True
@@ -139,11 +139,9 @@ class RefineRunner(BaseRunner):
             if self.project_dir:
                 context["dir"] = self.project_dir
             initial_prompt = prompt.load("refine", context=context)
-            # Note: --session-id is Claude's flag, not ours
-            cmd = ["claude", skip, "--session-id", self.lode_id, initial_prompt]
+            cmd = ["claude", skip, "--session-id", self.claude_session_id, initial_prompt]
         else:
-            # Note: --resume is Claude's flag, not ours
-            cmd = ["claude", skip, "--resume", self.lode_id]
+            cmd = ["claude", skip, "--resume", self.claude_session_id]
 
         return cmd, cwd
 

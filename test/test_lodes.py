@@ -116,6 +116,16 @@ def test_create_lode(temp_config):
     assert len(lodes_list) == 1
     assert lodes_list[0] is lode
 
+    # Verify per-stage Claude sessions
+    claude = lode["claude"]
+    for stage in ("ore", "refine", "ship"):
+        assert stage in claude
+        # Valid UUID format
+        import uuid
+
+        uuid.UUID(claude[stage]["session_id"])
+        assert claude[stage]["started"] is False
+
     # Verify directory was created
     assert get_lode_dir(lode["id"]).exists()
 

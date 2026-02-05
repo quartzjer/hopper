@@ -6,16 +6,42 @@ from unittest.mock import MagicMock, patch
 
 from hopper.refine import RefineRunner, run_refine
 
+CLAUDE_SESSIONS = {
+    "ore": {"session_id": "11111111-1111-1111-1111-111111111111", "started": False},
+    "refine": {"session_id": "22222222-2222-2222-2222-222222222222", "started": False},
+    "ship": {"session_id": "33333333-3333-3333-3333-333333333333", "started": False},
+}
+
+REFINE_SESSION_ID = CLAUDE_SESSIONS["refine"]["session_id"]
+
+
+def _claude_sessions(**stage_overrides):
+    """Return claude sessions dict with per-stage overrides."""
+    import copy
+
+    sessions = copy.deepcopy(CLAUDE_SESSIONS)
+    for stage, overrides in stage_overrides.items():
+        sessions[stage].update(overrides)
+    return sessions
+
 
 class TestRefineRunner:
     def _make_runner(self, lode_id="test-session-id"):
         return RefineRunner(lode_id, Path("/tmp/test.sock"))
 
-    def _mock_response(self, state="ready", active=False, project="my-project", stage="processing"):
+    def _mock_response(
+        self, state="ready", active=False, project="my-project", stage="processing", claude=None
+    ):
         return {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": state, "active": active, "project": project, "stage": stage},
+            "lode": {
+                "state": state,
+                "active": active,
+                "project": project,
+                "stage": stage,
+                "claude": claude or _claude_sessions(),
+            },
             "lode_found": True,
         }
 
@@ -81,6 +107,7 @@ class TestRefineRunner:
         cmd = mock_popen.call_args[0][0]
         assert cmd[0] == "claude"
         assert "--session-id" in cmd
+        assert REFINE_SESSION_ID in cmd
 
     def test_resume_skips_bootstrap(self, tmp_path):
         """Resume (state!=ready) uses --resume and skips Codex bootstrap."""
@@ -102,7 +129,12 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -123,7 +155,7 @@ class TestRefineRunner:
 
         # Claude invoked with --resume
         cmd = mock_popen.call_args[0][0]
-        assert cmd == ["claude", "--dangerously-skip-permissions", "--resume", "test-session-id"]
+        assert cmd == ["claude", "--dangerously-skip-permissions", "--resume", REFINE_SESSION_ID]
         assert mock_popen.call_args[1]["cwd"] == str(worktree)
 
     def test_bootstrap_failure_bails_runner(self, tmp_path, capsys):
@@ -307,7 +339,12 @@ class TestRefineRunner:
         mock_proc.stderr = io.BytesIO(b"Something broke\n")
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -343,7 +380,12 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -371,7 +413,12 @@ class TestRefineRunner:
         mock_project.path = str(project_dir)
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -406,7 +453,12 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -437,7 +489,12 @@ class TestRefineRunner:
         mock_proc.stderr = None
 
         with (
-            patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
+            patch(
+                "hopper.runner.connect",
+                return_value=self._mock_response(
+                    state="running", claude=_claude_sessions(refine={"started": True})
+                ),
+            ),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
             patch("hopper.refine.get_lode_dir", return_value=session_dir),
@@ -473,7 +530,12 @@ class TestRunRefine:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running", "project": "my-project", "stage": "processing"},
+            "lode": {
+                "state": "running",
+                "project": "my-project",
+                "stage": "processing",
+                "claude": _claude_sessions(refine={"started": True}),
+            },
             "lode_found": True,
         }
 
@@ -522,7 +584,12 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "lode": {"state": "ready", "project": "my-project", "stage": "processing"},
+                    "lode": {
+                        "state": "ready",
+                        "project": "my-project",
+                        "stage": "processing",
+                        "claude": _claude_sessions(),
+                    },
                     "lode_found": True,
                 },
             ),
@@ -579,7 +646,12 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "lode": {"state": "running", "project": "my-project", "stage": "processing"},
+                    "lode": {
+                        "state": "running",
+                        "project": "my-project",
+                        "stage": "processing",
+                        "claude": _claude_sessions(refine={"started": True}),
+                    },
                     "lode_found": True,
                 },
             ),

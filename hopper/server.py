@@ -309,6 +309,17 @@ class Server:
                     save_lodes(self.lodes)
                     self.broadcast({"type": "lode_updated", "lode": lode})
 
+        elif msg_type == "lode_set_claude_started":
+            lode_id = message.get("lode_id")
+            claude_stage = message.get("claude_stage")
+            if lode_id and claude_stage:
+                lode = self._find_lode(lode_id)
+                if lode and claude_stage in lode.get("claude", {}):
+                    lode["claude"][claude_stage]["started"] = True
+                    touch(lode)
+                    save_lodes(self.lodes)
+                    self.broadcast({"type": "lode_updated", "lode": lode})
+
         elif msg_type == "backlog_list":
             items_data = [item.to_dict() for item in self.backlog]
             self._send_response(conn, {"type": "backlog_list", "items": items_data})

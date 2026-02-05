@@ -535,3 +535,45 @@ def test_server_handles_lode_set_codex_thread(socket_path, server, temp_config, 
     assert server.lodes[0]["codex_thread_id"] == "codex-uuid-1234"
 
     client.close()
+
+
+def test_server_handles_lode_set_claude_started(socket_path, server, temp_config, make_lode):
+    """Server handles lode_set_claude_started message."""
+    lode = make_lode(id="test-id", stage="ore", state="running")
+    assert lode["claude"]["ore"]["started"] is False
+    server.lodes = [lode]
+    save_lodes(server.lodes)
+
+    # Connect client
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    # Wait for client to be registered
+    for _ in range(50):
+        if len(server.clients) > 0:
+            break
+        time.sleep(0.1)
+
+    # Send lode_set_claude_started message
+    msg = {
+        "type": "lode_set_claude_started",
+        "lode_id": "test-id",
+        "claude_stage": "ore",
+    }
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    # Should receive broadcast
+    data = client.recv(4096).decode("utf-8")
+    response = json.loads(data.strip().split("\n")[0])
+
+    assert response["type"] == "lode_updated"
+    assert response["lode"]["id"] == "test-id"
+    assert response["lode"]["claude"]["ore"]["started"] is True
+
+    # Server's lode should be updated
+    assert server.lodes[0]["claude"]["ore"]["started"] is True
+    # Other stages unchanged
+    assert server.lodes[0]["claude"]["refine"]["started"] is False
+
+    client.close()

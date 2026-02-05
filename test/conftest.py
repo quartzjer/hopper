@@ -47,6 +47,11 @@ def make_lode():
             "tmux_pane": None,
             "codex_thread_id": None,
             "backlog": None,
+            "claude": {
+                "ore": {"session_id": "00000000-0000-0000-0000-000000000001", "started": False},
+                "refine": {"session_id": "00000000-0000-0000-0000-000000000002", "started": False},
+                "ship": {"session_id": "00000000-0000-0000-0000-000000000003", "started": False},
+            },
             **overrides,
         }
         return lode

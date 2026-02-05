@@ -6,6 +6,24 @@ from unittest.mock import MagicMock, patch
 
 from hopper.ore import OreRunner, run_ore
 
+CLAUDE_SESSIONS = {
+    "ore": {"session_id": "11111111-1111-1111-1111-111111111111", "started": False},
+    "refine": {"session_id": "22222222-2222-2222-2222-222222222222", "started": False},
+    "ship": {"session_id": "33333333-3333-3333-3333-333333333333", "started": False},
+}
+
+ORE_SESSION_ID = CLAUDE_SESSIONS["ore"]["session_id"]
+
+
+def _claude_sessions(**stage_overrides):
+    """Return claude sessions dict with per-stage overrides."""
+    import copy
+
+    sessions = copy.deepcopy(CLAUDE_SESSIONS)
+    for stage, overrides in stage_overrides.items():
+        sessions[stage].update(overrides)
+    return sessions
+
 
 class TestOreRunner:
     def test_run_emits_running_state(self):
@@ -24,7 +42,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -47,7 +65,11 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running", "active": True},
+            "lode": {
+                "state": "running",
+                "active": True,
+                "claude": _claude_sessions(ore={"started": True}),
+            },
             "lode_found": True,
         }
 
@@ -72,7 +94,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -108,7 +130,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -143,7 +165,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -162,7 +184,7 @@ class TestOreRunner:
             "claude",
             "--dangerously-skip-permissions",
             "--resume",
-            "my-session-id",
+            ORE_SESSION_ID,
         ]
 
         # Check environment includes HOPPER_LID
@@ -183,7 +205,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "new"},
+            "lode": {"state": "new", "claude": _claude_sessions()},
             "lode_found": True,
         }
 
@@ -201,7 +223,7 @@ class TestOreRunner:
         cmd = call_args[0][0]
         assert cmd[0] == "claude"
         assert cmd[1] == "--dangerously-skip-permissions"
-        assert cmd[2:4] == ["--session-id", "my-session-id"]
+        assert cmd[2:4] == ["--session-id", ORE_SESSION_ID]
         assert "--resume" not in cmd
         assert (
             len(cmd) == 5
@@ -217,7 +239,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "new"},
+            "lode": {"state": "new", "claude": _claude_sessions()},
             "lode_found": True,
         }
 
@@ -246,7 +268,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -280,7 +302,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -314,7 +336,11 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running", "project": "my-project"},
+            "lode": {
+                "state": "running",
+                "project": "my-project",
+                "claude": _claude_sessions(ore={"started": True}),
+            },
             "lode_found": True,
         }
 
@@ -342,7 +368,11 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running", "project": "my-project"},
+            "lode": {
+                "state": "running",
+                "project": "my-project",
+                "claude": _claude_sessions(ore={"started": True}),
+            },
             "lode_found": True,
         }
 
@@ -374,7 +404,10 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},  # No project
+            "lode": {
+                "state": "running",
+                "claude": _claude_sessions(ore={"started": True}),
+            },  # No project
             "lode_found": True,
         }
 
@@ -405,7 +438,7 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "new", "scope": "build the widget"},
+            "lode": {"state": "new", "scope": "build the widget", "claude": _claude_sessions()},
             "lode_found": True,
         }
 
@@ -437,7 +470,7 @@ class TestRunOre:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 
@@ -472,7 +505,7 @@ class TestShovelWorkflow:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "new"},
+            "lode": {"state": "new", "claude": _claude_sessions()},
             "lode_found": True,
         }
 
@@ -517,7 +550,7 @@ class TestShovelWorkflow:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "lode": {"state": "running"},
+            "lode": {"state": "running", "claude": _claude_sessions(ore={"started": True})},
             "lode_found": True,
         }
 

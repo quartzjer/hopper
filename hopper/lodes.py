@@ -13,12 +13,17 @@ Lodes are plain dicts with these fields:
 - tmux_pane: str | None - tmux pane ID (default None)
 - codex_thread_id: str | None - Codex thread ID for stage resumption (default None)
 - backlog: dict | None - original backlog item data if promoted (default None)
+- claude: dict - per-stage Claude session tracking:
+    {"ore": {"session_id": "<uuid>", "started": false},
+     "refine": {"session_id": "<uuid>", "started": false},
+     "ship": {"session_id": "<uuid>", "started": false}}
 """
 
 import json
 import os
 import secrets
 import time
+import uuid
 from pathlib import Path
 
 from hopper import config
@@ -197,6 +202,14 @@ def _generate_lode_id(lodes: list[dict]) -> str:
     raise RuntimeError("Failed to generate unique lode ID after 100 attempts")
 
 
+def _make_claude_sessions() -> dict:
+    """Generate per-stage Claude session tracking with fresh UUIDs."""
+    return {
+        stage: {"session_id": str(uuid.uuid4()), "started": False}
+        for stage in ("ore", "refine", "ship")
+    }
+
+
 def create_lode(lodes: list[dict], project: str, scope: str = "") -> dict:
     """Create a new lode, add to list, and create its directory.
 
@@ -222,6 +235,7 @@ def create_lode(lodes: list[dict], project: str, scope: str = "") -> dict:
         "tmux_pane": None,
         "codex_thread_id": None,
         "backlog": None,
+        "claude": _make_claude_sessions(),
     }
     lodes.append(lode)
     get_lode_dir(lode["id"]).mkdir(parents=True, exist_ok=True)

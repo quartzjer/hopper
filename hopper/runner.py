@@ -55,7 +55,7 @@ class BaseRunner:
 
     # Subclasses set these to customize behavior
     _done_label: str = "done"
-    _first_run_state: str = "new"
+    _claude_stage: str = ""  # Key into lode["claude"] dict ("ore", "refine", "ship")
     _done_status: str = "Done"
     _next_stage: str = ""
     _always_dismiss: bool = False
@@ -65,6 +65,7 @@ class BaseRunner:
         self.socket_path = socket_path
         self.connection: HopperConnection | None = None
         self.is_first_run = False
+        self.claude_session_id: str = ""
         self.project_name: str = ""
         self.project_dir: str = ""
         # Activity monitor state
@@ -98,8 +99,10 @@ class BaseRunner:
                 print(f"Lode {self.lode_id} is already active")
                 return 1
 
-            state = lode_data.get("state")
-            self.is_first_run = state == self._first_run_state
+            # Read per-stage Claude session info
+            claude_info = lode_data.get("claude", {}).get(self._claude_stage, {})
+            self.claude_session_id = claude_info.get("session_id", "")
+            self.is_first_run = not claude_info.get("started", False)
 
             project_name = lode_data.get("project", "")
             if project_name:
@@ -129,6 +132,10 @@ class BaseRunner:
 
             # Run Claude (blocking)
             exit_code, error_msg = self._run_claude()
+
+            # Mark this stage's Claude session as started
+            if self.is_first_run and exit_code != 127:
+                self._emit_claude_started()
 
             if exit_code == 127:
                 self._emit_state("error", error_msg or "Command not found")
@@ -235,6 +242,16 @@ class BaseRunner:
                 stage=stage,
             )
             logger.debug(f"Emitted stage: {stage}")
+
+    def _emit_claude_started(self) -> None:
+        """Mark this stage's Claude session as started on the server."""
+        if self.connection:
+            self.connection.emit(
+                "lode_set_claude_started",
+                lode_id=self.lode_id,
+                claude_stage=self._claude_stage,
+            )
+            logger.debug(f"Emitted claude started for stage: {self._claude_stage}")
 
     def _on_server_message(self, message: dict) -> None:
         """Handle incoming server broadcast messages."""

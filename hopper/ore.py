@@ -10,7 +10,7 @@ class OreRunner(BaseRunner):
     """Runs Claude for an ore-stage lode, managing active/inactive state."""
 
     _done_label = "Shovel done"
-    _first_run_state = "new"
+    _claude_stage = "ore"
     _done_status = "Shovel-ready prompt saved"
     _next_stage = "processing"
 
@@ -42,11 +42,9 @@ class OreRunner(BaseRunner):
             if self.scope:
                 context["scope"] = self.scope
             initial_prompt = prompt.load("shovel", context=context if context else None)
-            # Note: --session-id is Claude's flag, not ours
-            cmd = ["claude", skip, "--session-id", self.lode_id, initial_prompt]
+            cmd = ["claude", skip, "--session-id", self.claude_session_id, initial_prompt]
         else:
-            # Note: --resume is Claude's flag, not ours
-            cmd = ["claude", skip, "--resume", self.lode_id]
+            cmd = ["claude", skip, "--resume", self.claude_session_id]
 
         return cmd, cwd
 
