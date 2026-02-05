@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hopper.config import load_config, save_config
+from hopper.lodes import current_time_ms
 
 
 @dataclass
@@ -17,6 +18,7 @@ class Project:
     path: str  # Absolute path to git directory
     name: str  # Basename of directory
     disabled: bool = False  # True if removed but has existing sessions
+    last_used_at: int = 0
 
 
 def validate_git_dir(path: str) -> bool:
@@ -59,6 +61,7 @@ def load_projects() -> list[Project]:
                     path=item["path"],
                     name=item["name"],
                     disabled=item.get("disabled", False),
+                    last_used_at=item.get("last_used_at", 0),
                 )
             )
     return projects
@@ -72,9 +75,25 @@ def save_projects(projects: list[Project]) -> None:
     """
     config = load_config()
     config["projects"] = [
-        {"path": p.path, "name": p.name, "disabled": p.disabled} for p in projects
+        {
+            "path": p.path,
+            "name": p.name,
+            "disabled": p.disabled,
+            "last_used_at": p.last_used_at,
+        }
+        for p in projects
     ]
     save_config(config)
+
+
+def touch_project(name: str) -> None:
+    """Update last_used_at timestamp for a project."""
+    projects = load_projects()
+    for p in projects:
+        if p.name == name:
+            p.last_used_at = current_time_ms()
+            break
+    save_projects(projects)
 
 
 def add_project(path: str) -> Project:
@@ -147,9 +166,11 @@ def find_project(name: str) -> Project | None:
 
 
 def get_active_projects() -> list[Project]:
-    """Get all non-disabled projects.
+    """Return non-disabled projects sorted by most recently used first.
 
     Returns:
         List of active (non-disabled) projects.
     """
-    return [p for p in load_projects() if not p.disabled]
+    active = [p for p in load_projects() if not p.disabled]
+    active.sort(key=lambda p: p.last_used_at, reverse=True)
+    return active

@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+from hopper.config import load_config, save_config
 from hopper.projects import (
     Project,
     add_project,
@@ -15,6 +16,7 @@ from hopper.projects import (
     load_projects,
     remove_project,
     save_projects,
+    touch_project,
     validate_git_dir,
 )
 
@@ -245,3 +247,54 @@ def test_get_active_projects_empty(mock_config):
     """get_active_projects returns empty list when no projects."""
     active = get_active_projects()
     assert active == []
+
+
+def test_load_save_roundtrip_last_used_at(mock_config, git_dir):
+    """last_used_at survives save/load roundtrip."""
+    add_project(str(git_dir))
+    projects = load_projects()
+    projects[0].last_used_at = 12345
+    save_projects(projects)
+    reloaded = load_projects()
+    assert reloaded[0].last_used_at == 12345
+
+
+def test_touch_project(mock_config, git_dir, monkeypatch):
+    """touch_project sets last_used_at to current time."""
+    add_project(str(git_dir))
+    monkeypatch.setattr("hopper.projects.current_time_ms", lambda: 99999)
+    touch_project("test-repo")
+    projects = load_projects()
+    assert projects[0].last_used_at == 99999
+
+
+def test_get_active_projects_sorted_by_last_used(mock_config, tmp_path):
+    """get_active_projects returns most recently used first."""
+    # Create three repos
+    for name in ["alpha", "beta", "gamma"]:
+        repo = tmp_path / name
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+        add_project(str(repo))
+
+    # Set different last_used_at timestamps
+    projects = load_projects()
+    projects[0].last_used_at = 100  # alpha
+    projects[1].last_used_at = 300  # beta
+    projects[2].last_used_at = 200  # gamma
+    save_projects(projects)
+
+    active = get_active_projects()
+    assert [p.name for p in active] == ["beta", "gamma", "alpha"]
+
+
+def test_load_projects_missing_last_used_at(mock_config, git_dir):
+    """Projects without last_used_at field default to 0."""
+    add_project(str(git_dir))
+    # Manually remove last_used_at from config
+    config = load_config()
+    for p in config["projects"]:
+        p.pop("last_used_at", None)
+    save_config(config)
+    projects = load_projects()
+    assert projects[0].last_used_at == 0

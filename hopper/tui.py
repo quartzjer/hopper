@@ -31,7 +31,7 @@ from hopper.lodes import (
     update_lode_stage,
     update_lode_state,
 )
-from hopper.projects import Project, find_project, get_active_projects
+from hopper.projects import Project, find_project, get_active_projects, touch_project
 
 # Claude Code-inspired theme
 # Colors derived from Claude Code's terminal UI (ANSI bright colors)
@@ -957,6 +957,9 @@ class HopperApp(App):
             if project is None:
                 return  # Cancelled
 
+            touch_project(project.name)
+            self._projects = get_active_projects()
+
             def on_scope_entered(result: tuple[str, bool] | None) -> None:
                 if result is None:
                     return  # Cancelled
@@ -977,6 +980,9 @@ class HopperApp(App):
         def on_project_selected(project: Project | None) -> None:
             if project is None:
                 return  # Cancelled
+
+            touch_project(project.name)
+            self._projects = get_active_projects()
 
             def on_description_entered(description: str | None) -> None:
                 if description is None:
