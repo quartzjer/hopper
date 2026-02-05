@@ -644,8 +644,8 @@ async def test_scope_input_cancel_button():
 
 
 @pytest.mark.asyncio
-async def test_scope_input_foreground():
-    """Foreground button should return scope and True."""
+async def test_scope_input_start():
+    """Start button should return scope and 'start'."""
     from textual.widgets import TextArea
 
     app = ScopeTestApp()
@@ -654,17 +654,17 @@ async def test_scope_input_foreground():
         screen = app.screen
         text_area = screen.query_one(TextArea)
         text_area.insert("Test task scope")
-        # Tab to Foreground button (third button)
+        # Tab to Start button (third button)
         await pilot.press("tab")  # Cancel
-        await pilot.press("tab")  # Background
-        await pilot.press("tab")  # Foreground
+        await pilot.press("tab")  # Backlog
+        await pilot.press("tab")  # Start
         await pilot.press("enter")
-        assert app.scope_result == ("Test task scope", True)
+        assert app.scope_result == ("Test task scope", "start")
 
 
 @pytest.mark.asyncio
-async def test_scope_input_background():
-    """Background button should return scope and False."""
+async def test_scope_input_backlog():
+    """Backlog button should return scope and 'backlog'."""
     from textual.widgets import TextArea
 
     app = ScopeTestApp()
@@ -673,11 +673,11 @@ async def test_scope_input_background():
         screen = app.screen
         text_area = screen.query_one(TextArea)
         text_area.insert("Test task scope")
-        # Tab to Background button (second button)
+        # Tab to Backlog button (second button)
         await pilot.press("tab")  # Cancel
-        await pilot.press("tab")  # Background
+        await pilot.press("tab")  # Backlog
         await pilot.press("enter")
-        assert app.scope_result == ("Test task scope", False)
+        assert app.scope_result == ("Test task scope", "backlog")
 
 
 @pytest.mark.asyncio
@@ -685,10 +685,10 @@ async def test_scope_input_empty_validation():
     """Empty scope should not submit - result stays as sentinel."""
     app = ScopeTestApp()
     async with app.run_test() as pilot:
-        # Tab to Foreground button without typing anything
+        # Tab to Start button without typing anything
         await pilot.press("tab")  # Cancel
-        await pilot.press("tab")  # Background
-        await pilot.press("tab")  # Foreground
+        await pilot.press("tab")  # Backlog
+        await pilot.press("tab")  # Start
         await pilot.press("enter")
         # Should not have dismissed - still sentinel
         assert app.scope_result == "not_set"
@@ -702,21 +702,21 @@ async def test_scope_input_arrow_keys_navigate_buttons():
         # Tab from TextArea to first button (Cancel)
         await pilot.press("tab")
         assert app.screen.focused.id == "btn-cancel"
-        # Right arrow to Background
+        # Right arrow to Backlog
         await pilot.press("right")
-        assert app.screen.focused.id == "btn-background"
-        # Right arrow to Foreground
+        assert app.screen.focused.id == "btn-backlog"
+        # Right arrow to Start
         await pilot.press("right")
-        assert app.screen.focused.id == "btn-foreground"
+        assert app.screen.focused.id == "btn-start"
         # Right arrow wraps to Cancel
         await pilot.press("right")
         assert app.screen.focused.id == "btn-cancel"
-        # Left arrow wraps to Foreground
+        # Left arrow wraps to Start
         await pilot.press("left")
-        assert app.screen.focused.id == "btn-foreground"
-        # Left arrow to Background
+        assert app.screen.focused.id == "btn-start"
+        # Left arrow to Backlog
         await pilot.press("left")
-        assert app.screen.focused.id == "btn-background"
+        assert app.screen.focused.id == "btn-backlog"
 
 
 @pytest.mark.asyncio
@@ -739,14 +739,14 @@ async def test_scope_input_shift_tab_between_buttons():
     """Shift+Tab should move backwards through buttons."""
     app = ScopeTestApp()
     async with app.run_test() as pilot:
-        # Tab to Foreground (third button)
+        # Tab to Start (third button)
         await pilot.press("tab")  # Cancel
-        await pilot.press("tab")  # Background
-        await pilot.press("tab")  # Foreground
-        assert app.screen.focused.id == "btn-foreground"
-        # Shift+Tab back to Background
+        await pilot.press("tab")  # Backlog
+        await pilot.press("tab")  # Start
+        assert app.screen.focused.id == "btn-start"
+        # Shift+Tab back to Backlog
         await pilot.press("shift+tab")
-        assert app.screen.focused.id == "btn-background"
+        assert app.screen.focused.id == "btn-backlog"
         # Shift+Tab back to Cancel
         await pilot.press("shift+tab")
         assert app.screen.focused.id == "btn-cancel"
@@ -761,28 +761,28 @@ async def test_scope_input_arrow_key_select():
     async with app.run_test() as pilot:
         screen = app.screen
         text_area = screen.query_one(TextArea)
-        text_area.insert("Arrow test")
-        # Tab to Cancel, then right twice to Foreground
+        text_area.insert("Test task scope")
+        # Tab to Cancel, then right twice to Start
         await pilot.press("tab")
         await pilot.press("right")
         await pilot.press("right")
-        assert app.screen.focused.id == "btn-foreground"
+        assert app.screen.focused.id == "btn-start"
         await pilot.press("enter")
-        assert app.scope_result == ("Arrow test", True)
+        assert app.scope_result == ("Test task scope", "start")
 
 
 @pytest.mark.asyncio
 async def test_scope_input_shift_enter():
-    """Shift+Enter should submit via the primary (Foreground) button."""
+    """Shift+Enter should submit via the primary (Start) button."""
     from textual.widgets import TextArea
 
     app = ScopeTestApp()
     async with app.run_test() as pilot:
         screen = app.screen
         text_area = screen.query_one(TextArea)
-        text_area.insert("Shift enter test")
+        text_area.insert("Test task scope")
         await pilot.press("shift+enter")
-        assert app.scope_result == ("Shift enter test", True)
+        assert app.scope_result == ("Test task scope", "start")
 
 
 @pytest.mark.asyncio

@@ -370,18 +370,18 @@ class TextInputScreen(ModalScreen):
 
 
 class ScopeInputScreen(TextInputScreen):
-    """Modal screen for entering task scope and spawn mode."""
+    """Modal screen for entering task scope — start a lode or add to backlog."""
 
     MODAL_TITLE = "Describe Task Scope"
 
     def compose_buttons(self) -> ComposeResult:
         yield Button("Cancel", id="btn-cancel", variant="default")
-        yield Button("Background", id="btn-background", variant="default")
-        yield Button("Foreground", id="btn-foreground", variant="primary")
+        yield Button("Backlog", id="btn-backlog", variant="default")
+        yield Button("Start", id="btn-start", variant="primary")
 
     def on_submit(self, button: Button, text: str) -> None:
-        foreground = button.id == "btn-foreground"
-        self.dismiss((text, foreground))
+        action = "start" if button.id == "btn-start" else "backlog"
+        self.dismiss((text, action))
 
 
 class BacklogInputScreen(TextInputScreen):
@@ -994,7 +994,7 @@ class HopperApp(App):
         return True
 
     def action_new_lode(self) -> None:
-        """Open project picker, then scope input, to create a new lode."""
+        """Open project picker, then scope input, to create a lode or backlog item."""
         if not self._require_projects():
             return
 
@@ -1005,13 +1005,17 @@ class HopperApp(App):
             touch_project(project.name)
             self._projects = get_active_projects()
 
-            def on_scope_entered(result: tuple[str, bool] | None) -> None:
+            def on_scope_entered(result: tuple[str, str] | None) -> None:
                 if result is None:
                     return  # Cancelled
-                scope, foreground = result
-                lode = create_lode(self._lodes, project.name, scope)
-                spawn_claude(lode["id"], project.path, foreground)
-                self.refresh_table()
+                scope, action = result
+                if action == "backlog":
+                    add_backlog_item(self._backlog, project.name, scope)
+                    self.refresh_backlog()
+                else:
+                    lode = create_lode(self._lodes, project.name, scope)
+                    spawn_claude(lode["id"], project.path, foreground=False)
+                    self.refresh_table()
 
             self.push_screen(ScopeInputScreen(), on_scope_entered)
 
