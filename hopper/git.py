@@ -77,3 +77,28 @@ def current_branch(repo_dir: str) -> str | None:
         return branch if branch != "HEAD" else None
     except (FileNotFoundError, subprocess.SubprocessError):
         return None
+
+
+def get_diff_stat(worktree_path: str) -> str:
+    """Get diff stat output comparing worktree branch to main/master.
+
+    Args:
+        worktree_path: Path to the git worktree.
+
+    Returns:
+        The diff --stat output as a string, or empty string on error.
+    """
+    # Try main first, fall back to master
+    for base in ("main", "master"):
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--stat", f"{base}...HEAD"],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except (FileNotFoundError, subprocess.SubprocessError):
+            pass
+    return ""

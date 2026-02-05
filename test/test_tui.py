@@ -1,5 +1,7 @@
 """Tests for the TUI module."""
 
+from unittest.mock import patch
+
 import pytest
 from textual.app import App
 
@@ -23,6 +25,7 @@ from hopper.tui import (
     format_status_label,
     format_status_text,
     session_to_row,
+    strip_ansi,
 )
 
 # Tests for session_to_row
@@ -208,6 +211,35 @@ def test_format_status_label_strips_newlines():
     """format_status_label replaces newlines with spaces."""
     text = format_status_label("line1\nline2", STATUS_RUNNING)
     assert str(text) == "line1 line2"
+
+
+def test_format_status_label_strips_ansi():
+    """format_status_label removes ANSI escape codes."""
+    ansi_text = "\x1b[31mError: Something failed\x1b[39m"
+    text = format_status_label(ansi_text, STATUS_ERROR)
+    assert str(text) == "Error: Something failed"
+
+
+def test_format_status_label_strips_ansi_and_newlines():
+    """format_status_label handles both ANSI codes and newlines."""
+    ansi_text = "\x1b[31mError: line1\x1b[39m\n\x1b[31mline2\x1b[39m"
+    text = format_status_label(ansi_text, STATUS_ERROR)
+    assert str(text) == "Error: line1 line2"
+
+
+# Tests for strip_ansi
+
+
+def test_strip_ansi_removes_color_codes():
+    """strip_ansi removes ANSI color codes."""
+    assert strip_ansi("\x1b[31mred\x1b[0m") == "red"
+    assert strip_ansi("\x1b[1;32mbold green\x1b[0m") == "bold green"
+
+
+def test_strip_ansi_preserves_plain_text():
+    """strip_ansi leaves plain text unchanged."""
+    assert strip_ansi("plain text") == "plain text"
+    assert strip_ansi("") == ""
 
 
 # Tests for Row dataclass
@@ -1410,3 +1442,216 @@ async def test_legend_contains_all_symbols():
         assert STAGE_PROCESSING in text
         assert "▸" in text
         assert "▹" in text
+
+
+# Tests for ShipReviewScreen
+
+
+class ShipReviewTestApp(App):
+    """Test app wrapper for ShipReviewScreen."""
+
+    def __init__(self, diff_stat: str = ""):
+        super().__init__()
+        self.review_result = "not_set"  # sentinel value
+        self._diff_stat = diff_stat
+
+    def on_mount(self) -> None:
+        from hopper.tui import ShipReviewScreen
+
+        def capture_result(r):
+            self.review_result = r
+
+        self.push_screen(ShipReviewScreen(diff_stat=self._diff_stat), capture_result)
+
+
+@pytest.mark.asyncio
+async def test_ship_review_shows_diff_stat():
+    """ShipReviewScreen should display the diff stat."""
+    from textual.widgets import Static
+
+    diff = " file.py | 10 ++++------\n 1 file changed"
+    app = ShipReviewTestApp(diff_stat=diff)
+    async with app.run_test():
+        body = app.screen.query_one("#ship-diff", Static)
+        text = str(body.render())
+        assert "file.py" in text
+
+
+@pytest.mark.asyncio
+async def test_ship_review_shows_no_changes():
+    """ShipReviewScreen should show 'No changes' when diff is empty."""
+    from textual.widgets import Static
+
+    app = ShipReviewTestApp(diff_stat="")
+    async with app.run_test():
+        body = app.screen.query_one("#ship-diff", Static)
+        text = str(body.render())
+        assert "No changes" in text
+
+
+@pytest.mark.asyncio
+async def test_ship_review_cancel_escape():
+    """Escape should dismiss the review screen with None."""
+    app = ShipReviewTestApp(diff_stat="file.py | 1 +")
+    async with app.run_test() as pilot:
+        await pilot.press("escape")
+        assert app.review_result is None
+
+
+@pytest.mark.asyncio
+async def test_ship_review_cancel_button():
+    """Cancel button should dismiss with None."""
+    app = ShipReviewTestApp(diff_stat="file.py | 1 +")
+    async with app.run_test() as pilot:
+        await pilot.press("left")  # Ship -> Refine
+        await pilot.press("left")  # Refine -> Cancel
+        await pilot.press("enter")
+        assert app.review_result is None
+
+
+@pytest.mark.asyncio
+async def test_ship_review_ship_button():
+    """Ship button should return 'ship'."""
+    app = ShipReviewTestApp(diff_stat="file.py | 1 +")
+    async with app.run_test() as pilot:
+        # Ship button is focused by default
+        await pilot.press("enter")
+        assert app.review_result == "ship"
+
+
+@pytest.mark.asyncio
+async def test_ship_review_refine_button():
+    """Refine button should return 'refine'."""
+    app = ShipReviewTestApp(diff_stat="file.py | 1 +")
+    async with app.run_test() as pilot:
+        await pilot.press("left")  # Ship -> Refine
+        await pilot.press("enter")
+        assert app.review_result == "refine"
+
+
+@pytest.mark.asyncio
+async def test_ship_review_arrow_navigation():
+    """Arrow keys should navigate between buttons."""
+    app = ShipReviewTestApp(diff_stat="file.py | 1 +")
+    async with app.run_test() as pilot:
+        # Ship is focused by default
+        assert app.screen.focused.id == "btn-ship"
+        await pilot.press("left")
+        assert app.screen.focused.id == "btn-refine"
+        await pilot.press("left")
+        assert app.screen.focused.id == "btn-cancel"
+        await pilot.press("left")  # wraps
+        assert app.screen.focused.id == "btn-ship"
+        await pilot.press("right")  # wraps other way
+        assert app.screen.focused.id == "btn-cancel"
+
+
+@pytest.mark.asyncio
+async def test_enter_on_ship_ready_opens_ship_review(temp_config):
+    """Enter on a ship/ready session should open ShipReviewScreen."""
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShipReviewScreen
+
+    session = Session(id="aaaa1111-uuid", stage="ship", state="ready", created_at=1000)
+    # Create worktree directory for this session
+    session_dir = get_session_dir(session.id)
+    worktree = session_dir / "worktree"
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+
+    with patch("hopper.tui.get_diff_stat", return_value=" file.py | 5 +++++"):
+        async with app.run_test() as pilot:
+            await pilot.press("enter")
+            assert isinstance(app.screen, ShipReviewScreen)
+
+
+@pytest.mark.asyncio
+async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
+    """Ship from review should spawn ship in background."""
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShipReviewScreen
+
+    session = Session(
+        id="aaaa1111-uuid",
+        stage="ship",
+        state="ready",
+        created_at=1000,
+        project="testproj",
+    )
+    session_dir = get_session_dir(session.id)
+    worktree = session_dir / "worktree"
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    spawned = []
+    monkeypatch.setattr(
+        "hopper.tui.spawn_claude",
+        lambda sid, path, foreground=True, stage="ore": spawned.append(
+            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        ),
+    )
+    monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+
+    with patch("hopper.tui.get_diff_stat", return_value=" file.py | 5 +++++"):
+        async with app.run_test() as pilot:
+            await pilot.press("enter")
+            assert isinstance(app.screen, ShipReviewScreen)
+            # Ship is focused by default
+            await pilot.press("enter")
+
+            assert len(spawned) == 1
+            assert spawned[0]["sid"] == session.id
+            assert spawned[0]["fg"] is False
+            assert spawned[0]["stage"] == "ship"
+
+
+@pytest.mark.asyncio
+async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_config):
+    """Refine from review should change stage back and spawn refine."""
+    from hopper.sessions import get_session_dir
+    from hopper.tui import ShipReviewScreen
+
+    session = Session(
+        id="aaaa1111-uuid",
+        stage="ship",
+        state="ready",
+        created_at=1000,
+        project="testproj",
+    )
+    session_dir = get_session_dir(session.id)
+    worktree = session_dir / "worktree"
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    spawned = []
+    monkeypatch.setattr(
+        "hopper.tui.spawn_claude",
+        lambda sid, path, foreground=True, stage="ore": spawned.append(
+            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        ),
+    )
+    monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
+
+    server = MockServer([session])
+    app = HopperApp(server=server)
+
+    with patch("hopper.tui.get_diff_stat", return_value=" file.py | 5 +++++"):
+        async with app.run_test() as pilot:
+            await pilot.press("enter")
+            assert isinstance(app.screen, ShipReviewScreen)
+            await pilot.press("left")  # Ship -> Refine
+            await pilot.press("enter")
+
+            # Session stage should be changed back to processing
+            assert session.stage == "processing"
+            assert session.state == "running"
+            assert session.status == "Resuming refine"
+
+            # Should have spawned refine in background
+            assert len(spawned) == 1
+            assert spawned[0]["sid"] == session.id
+            assert spawned[0]["fg"] is False
+            assert spawned[0]["stage"] == "processing"

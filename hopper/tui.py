@@ -1,6 +1,7 @@
 """TUI for managing coding agents using Textual."""
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from textual.widgets.option_list import Option
 
 from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item, update_backlog_item
 from hopper.claude import spawn_claude, switch_to_pane
+from hopper.git import get_diff_stat
 from hopper.projects import Project, find_project, get_active_projects
 from hopper.sessions import (
     Session,
@@ -25,6 +27,8 @@ from hopper.sessions import (
     format_uptime,
     get_session_dir,
     save_sessions,
+    update_session_stage,
+    update_session_state,
 )
 
 # Claude Code-inspired theme
@@ -121,9 +125,15 @@ def format_status_text(status: str) -> Text:
     return Text(status, style=STATUS_COLORS.get(status, ""))
 
 
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def format_status_label(label: str, status: str) -> Text:
     """Format status text with color matching the status icon."""
-    return Text(label.replace("\n", " ") if label else "", style=STATUS_COLORS.get(status, ""))
+    cleaned = strip_ansi(label.replace("\n", " ")) if label else ""
+    return Text(cleaned, style=STATUS_COLORS.get(status, ""))
 
 
 def format_active_text(active: bool) -> Text:
@@ -378,6 +388,127 @@ class ShovelReviewScreen(TextInputScreen):
     def on_submit(self, button: Button, text: str) -> None:
         action = "process" if button.id == "btn-process" else "save"
         self.dismiss((action, text))
+
+
+class ShipReviewScreen(ModalScreen[str | None]):
+    """Modal screen for reviewing changes before shipping."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ShipReviewScreen {
+        align: center middle;
+        height: 100%;
+    }
+
+    #ship-container {
+        width: 80;
+        height: auto;
+        max-height: 80%;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+
+    #ship-title {
+        text-align: center;
+        text-style: bold;
+        color: $text;
+        padding-bottom: 1;
+    }
+
+    #ship-diff {
+        height: auto;
+        max-height: 20;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+
+    #ship-buttons {
+        height: auto;
+        align: center middle;
+        padding-top: 1;
+    }
+
+    #ship-buttons Button {
+        margin: 0 1;
+    }
+
+    #ship-buttons Button:focus {
+        text-style: bold reverse;
+    }
+    """
+
+    def __init__(self, diff_stat: str = ""):
+        super().__init__()
+        self._diff_stat = diff_stat
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ship-container"):
+            yield Static("Ship Review", id="ship-title")
+            yield Static(self._format_diff(), id="ship-diff")
+            with Horizontal(id="ship-buttons"):
+                yield Button("Cancel", id="btn-cancel", variant="default")
+                yield Button("Refine", id="btn-refine", variant="default")
+                yield Button("Ship", id="btn-ship", variant="primary")
+
+    def _format_diff(self) -> Text:
+        """Format the diff stat output with colors."""
+        if not self._diff_stat:
+            return Text("No changes", style="dim")
+
+        text = Text()
+        for line in self._diff_stat.split("\n"):
+            if "|" in line:
+                # File line: " filename | 10 +++++-----"
+                parts = line.split("|")
+                text.append(parts[0])
+                text.append("|")
+                if len(parts) > 1:
+                    stat_part = parts[1]
+                    for char in stat_part:
+                        if char == "+":
+                            text.append(char, style="bright_green")
+                        elif char == "-":
+                            text.append(char, style="bright_red")
+                        else:
+                            text.append(char)
+                text.append("\n")
+            else:
+                # Summary line or other
+                text.append(line + "\n")
+        return text
+
+    def on_mount(self) -> None:
+        self.query_one("#btn-ship").focus()
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.focused
+        buttons = list(self.query("#ship-buttons Button"))
+
+        if event.key == "right" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx + 1) % len(buttons)].focus()
+        elif event.key == "left" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx - 1) % len(buttons)].focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.dismiss(None)
+        elif event.button.id == "btn-refine":
+            self.dismiss("refine")
+        elif event.button.id == "btn-ship":
+            self.dismiss("ship")
 
 
 class LegendScreen(ModalScreen):
@@ -892,6 +1023,9 @@ class HopperApp(App):
         elif session.stage == "processing" and session.state == "ready":
             # Shovel complete, ready for processing - review before starting
             self._review_shovel(session, project_path)
+        elif session.stage == "ship" and session.state == "ready":
+            # Refine complete, ready to ship - review changes before shipping
+            self._review_ship(session, project_path)
         else:
             # Session is not active - spawn runner based on stage
             if not spawn_claude(session.id, project_path, stage=session.stage):
@@ -963,6 +1097,29 @@ class HopperApp(App):
             self.refresh_table()
 
         self.push_screen(ShovelReviewScreen(initial_text=shovel_text), on_review_result)
+
+    def _review_ship(self, session: Session, project_path: str | None) -> None:
+        """Open the ship review modal for a ship-ready session."""
+        worktree_path = get_session_dir(session.id) / "worktree"
+        if not worktree_path.is_dir():
+            self.notify("Worktree not found", severity="error")
+            return
+
+        diff_stat = get_diff_stat(str(worktree_path))
+
+        def on_review_result(result: str | None) -> None:
+            if result is None:
+                return  # Cancelled
+            if result == "ship":
+                spawn_claude(session.id, project_path, foreground=False, stage="ship")
+            elif result == "refine":
+                # Change stage back to processing and resume refine
+                update_session_stage(self._sessions, session.id, "processing")
+                update_session_state(self._sessions, session.id, "running", "Resuming refine")
+                spawn_claude(session.id, project_path, foreground=False, stage="processing")
+            self.refresh_table()
+
+        self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)
 
     def action_delete_backlog(self) -> None:
         """Delete the selected backlog item."""
