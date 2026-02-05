@@ -3,103 +3,74 @@
 import json
 
 from hopper.lodes import (
+    ID_ALPHABET,
     ID_LEN,
-    Lode,
     archive_lode,
     create_lode,
     current_time_ms,
-    find_by_prefix,
     format_age,
     format_duration_ms,
     format_uptime,
     get_lode_dir,
     load_lodes,
     save_lodes,
+    touch,
     update_lode_stage,
     update_lode_state,
 )
 
 
-def test_lode_to_dict_and_from_dict():
-    """Test Lode serialization roundtrip."""
-    lode = Lode(
-        id="abc-123",
-        stage="ore",
-        created_at=1234567890,
-        updated_at=1234567890,
-        state="new",
-        active=True,
-        tmux_pane=None,
-    )
-    data = lode.to_dict()
-    restored = Lode.from_dict(data)
+def test_lode_dict_json_roundtrip():
+    """Test lode dict serialization roundtrip."""
+    lode = {
+        "id": "abc12345",
+        "stage": "ore",
+        "created_at": 1234567890,
+        "updated_at": 1234567890,
+        "state": "new",
+        "active": True,
+        "tmux_pane": None,
+        "project": "",
+        "scope": "",
+        "status": "",
+        "codex_thread_id": None,
+        "backlog": None,
+    }
+    serialized = json.dumps(lode)
+    restored = json.loads(serialized)
 
-    assert restored.id == lode.id
-    assert restored.stage == lode.stage
-    assert restored.created_at == lode.created_at
-    assert restored.updated_at == lode.updated_at
-    assert restored.state == lode.state
-    assert restored.active == lode.active
-    assert restored.tmux_pane == lode.tmux_pane
+    assert restored["id"] == lode["id"]
+    assert restored["stage"] == lode["stage"]
+    assert restored["created_at"] == lode["created_at"]
+    assert restored["updated_at"] == lode["updated_at"]
+    assert restored["state"] == lode["state"]
+    assert restored["active"] == lode["active"]
+    assert restored["tmux_pane"] == lode["tmux_pane"]
 
 
-def test_lode_to_dict_includes_codex_thread_id():
-    """to_dict includes codex_thread_id field."""
-    lode = Lode(
-        id="abc-123",
-        stage="processing",
-        created_at=1000,
-        codex_thread_id="codex-uuid-1234",
-    )
-    data = lode.to_dict()
-    assert data["codex_thread_id"] == "codex-uuid-1234"
+def test_lode_dict_includes_codex_thread_id():
+    """Lode dict includes codex_thread_id field."""
+    lode = {
+        "id": "abc12345",
+        "stage": "processing",
+        "created_at": 1000,
+        "codex_thread_id": "codex-uuid-1234",
+    }
+    assert lode["codex_thread_id"] == "codex-uuid-1234"
 
 
 def test_lode_codex_thread_id_roundtrip():
-    """codex_thread_id survives to_dict/from_dict roundtrip."""
-    lode = Lode(
-        id="abc-123",
-        stage="processing",
-        created_at=1000,
-        updated_at=1000,
-        state="running",
-        codex_thread_id="thread-xyz",
-    )
-    restored = Lode.from_dict(lode.to_dict())
-    assert restored.codex_thread_id == "thread-xyz"
-
-
-def test_lode_codex_thread_id_default_none():
-    """codex_thread_id defaults to None."""
-    lode = Lode(id="abc-123", stage="ore", created_at=1000)
-    assert lode.codex_thread_id is None
-    assert lode.to_dict()["codex_thread_id"] is None
-
-
-def test_lode_from_dict_backwards_compat_codex_thread_id():
-    """Lodes without 'codex_thread_id' field default to None."""
-    data = {
-        "id": "abc-123",
-        "stage": "ore",
+    """codex_thread_id survives json roundtrip."""
+    lode = {
+        "id": "abc12345",
+        "stage": "processing",
         "created_at": 1000,
         "updated_at": 1000,
-        "state": "new",
+        "state": "running",
+        "codex_thread_id": "thread-xyz",
     }
-    lode = Lode.from_dict(data)
-    assert lode.codex_thread_id is None
-
-
-def test_lode_from_dict_backwards_compat_active():
-    """Lodes without 'active' field default to False."""
-    data = {
-        "id": "abc-123",
-        "stage": "ore",
-        "created_at": 1000,
-        "updated_at": 1000,
-        "state": "new",
-    }
-    lode = Lode.from_dict(data)
-    assert lode.active is False
+    restored = json.loads(json.dumps(lode))
+    assert restored["codex_thread_id"] == "thread-xyz"
 
 
 def test_load_lodes_empty(temp_config):
@@ -111,17 +82,23 @@ def test_load_lodes_empty(temp_config):
 def test_save_and_load_lodes(temp_config):
     """Test save/load roundtrip."""
     lodes_list = [
-        Lode(id="id-1", stage="ore", created_at=1000),
-        Lode(id="id-2", stage="processing", created_at=2000),
+        {"id": "id111111", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"},
+        {
+            "id": "id222222",
+            "stage": "processing",
+            "created_at": 2000,
+            "updated_at": 2000,
+            "state": "new",
+        },
     ]
     save_lodes(lodes_list)
 
     loaded = load_lodes()
     assert len(loaded) == 2
-    assert loaded[0].id == "id-1"
-    assert loaded[0].stage == "ore"
-    assert loaded[1].id == "id-2"
-    assert loaded[1].stage == "processing"
+    assert loaded[0]["id"] == "id111111"
+    assert loaded[0]["stage"] == "ore"
+    assert loaded[1]["id"] == "id222222"
+    assert loaded[1]["stage"] == "processing"
 
 
 def test_create_lode(temp_config):
@@ -129,24 +106,24 @@ def test_create_lode(temp_config):
     lodes_list = []
     lode = create_lode(lodes_list, "test-project")
 
-    # Verify 8-char hex ID format
-    assert len(lode.id) == ID_LEN
-    int(lode.id, 16)  # Raises if not valid hex
+    # Verify 8-char base32 ID format
+    assert len(lode["id"]) == ID_LEN
+    assert all(c in ID_ALPHABET for c in lode["id"])
 
-    assert lode.stage == "ore"
-    assert lode.project == "test-project"
-    assert lode.created_at > 0
+    assert lode["stage"] == "ore"
+    assert lode["project"] == "test-project"
+    assert lode["created_at"] > 0
     assert len(lodes_list) == 1
     assert lodes_list[0] is lode
 
     # Verify directory was created
-    assert get_lode_dir(lode.id).exists()
+    assert get_lode_dir(lode["id"]).exists()
 
     # Verify persisted to file
     loaded = load_lodes()
     assert len(loaded) == 1
-    assert loaded[0].id == lode.id
-    assert loaded[0].project == "test-project"
+    assert loaded[0]["id"] == lode["id"]
+    assert loaded[0]["project"] == "test-project"
 
 
 def test_create_lode_with_scope(temp_config):
@@ -154,29 +131,31 @@ def test_create_lode_with_scope(temp_config):
     lodes_list = []
     lode = create_lode(lodes_list, "test-project", "Fix the login bug")
 
-    assert lode.scope == "Fix the login bug"
-    assert lode.project == "test-project"
+    assert lode["scope"] == "Fix the login bug"
+    assert lode["project"] == "test-project"
 
     # Verify persisted to file
     loaded = load_lodes()
     assert len(loaded) == 1
-    assert loaded[0].scope == "Fix the login bug"
+    assert loaded[0]["scope"] == "Fix the login bug"
 
 
 def test_update_lode_stage(temp_config):
     """Test updating lode stage."""
-    lodes_list = [Lode(id="test-id", stage="ore", created_at=1000)]
+    lodes_list = [
+        {"id": "testid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"}
+    ]
     save_lodes(lodes_list)
 
-    updated = update_lode_stage(lodes_list, "test-id", "processing")
+    updated = update_lode_stage(lodes_list, "testid11", "processing")
 
     assert updated is not None
-    assert updated.stage == "processing"
-    assert lodes_list[0].stage == "processing"
+    assert updated["stage"] == "processing"
+    assert lodes_list[0]["stage"] == "processing"
 
     # Verify persisted
     loaded = load_lodes()
-    assert loaded[0].stage == "processing"
+    assert loaded[0]["stage"] == "processing"
 
 
 def test_update_lode_stage_not_found(temp_config):
@@ -189,22 +168,28 @@ def test_update_lode_stage_not_found(temp_config):
 def test_archive_lode(temp_config):
     """Test archiving a lode."""
     lodes_list = [
-        Lode(id="keep-id", stage="ore", created_at=1000),
-        Lode(id="archive-id", stage="processing", created_at=2000),
+        {"id": "keepid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"},
+        {
+            "id": "archivid",
+            "stage": "processing",
+            "created_at": 2000,
+            "updated_at": 2000,
+            "state": "new",
+        },
     ]
     save_lodes(lodes_list)
 
-    archived = archive_lode(lodes_list, "archive-id")
+    archived = archive_lode(lodes_list, "archivid")
 
     assert archived is not None
-    assert archived.id == "archive-id"
+    assert archived["id"] == "archivid"
     assert len(lodes_list) == 1
-    assert lodes_list[0].id == "keep-id"
+    assert lodes_list[0]["id"] == "keepid11"
 
     # Verify active lodes file
     loaded = load_lodes()
     assert len(loaded) == 1
-    assert loaded[0].id == "keep-id"
+    assert loaded[0]["id"] == "keepid11"
 
     # Verify archived file
     archived_file = temp_config / "archived.jsonl"
@@ -213,7 +198,7 @@ def test_archive_lode(temp_config):
         lines = f.readlines()
     assert len(lines) == 1
     data = json.loads(lines[0])
-    assert data["id"] == "archive-id"
+    assert data["id"] == "archivid"
 
 
 def test_archive_lode_not_found(temp_config):
@@ -226,13 +211,13 @@ def test_archive_lode_not_found(temp_config):
 def test_archive_appends(temp_config):
     """Test that archive appends to existing file."""
     lodes_list = [
-        Lode(id="id-1", stage="ore", created_at=1000),
-        Lode(id="id-2", stage="ore", created_at=2000),
+        {"id": "id111111", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"},
+        {"id": "id222222", "stage": "ore", "created_at": 2000, "updated_at": 2000, "state": "new"},
     ]
     save_lodes(lodes_list)
 
-    archive_lode(lodes_list, "id-1")
-    archive_lode(lodes_list, "id-2")
+    archive_lode(lodes_list, "id111111")
+    archive_lode(lodes_list, "id222222")
 
     archived_file = temp_config / "archived.jsonl"
     with open(archived_file) as f:
@@ -242,7 +227,9 @@ def test_archive_appends(temp_config):
 
 def test_atomic_save(temp_config):
     """Test that save is atomic (no temp file left behind)."""
-    lodes_list = [Lode(id="test", stage="ore", created_at=1000)]
+    lodes_list = [
+        {"id": "testid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"}
+    ]
     save_lodes(lodes_list)
 
     # No .tmp file should exist
@@ -258,54 +245,6 @@ def test_get_lode_dir(temp_config):
     """Test lode directory path."""
     path = get_lode_dir("my-lode-id")
     assert path == temp_config / "lodes" / "my-lode-id"
-
-
-# Tests for find_by_prefix
-
-
-def test_find_by_prefix_exact():
-    """find_by_prefix matches full ID."""
-    lodes = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="ore", created_at=2000),
-    ]
-    result = find_by_prefix(lodes, "aaaa1111")
-    assert result is lodes[0]
-
-
-def test_find_by_prefix_partial():
-    """find_by_prefix matches unique prefix."""
-    lodes = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="ore", created_at=2000),
-    ]
-    result = find_by_prefix(lodes, "aaaa")
-    assert result is lodes[0]
-
-
-def test_find_by_prefix_ambiguous():
-    """find_by_prefix returns None for ambiguous prefix."""
-    lodes = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="aaaa2222", stage="ore", created_at=2000),
-    ]
-    result = find_by_prefix(lodes, "aaaa")
-    assert result is None
-
-
-def test_find_by_prefix_not_found():
-    """find_by_prefix returns None when no match."""
-    lodes = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-    ]
-    result = find_by_prefix(lodes, "xxxx")
-    assert result is None
-
-
-def test_find_by_prefix_empty():
-    """find_by_prefix returns None for empty list."""
-    result = find_by_prefix([], "aaaa")
-    assert result is None
 
 
 # Tests for format_age
@@ -388,62 +327,44 @@ def test_format_uptime_days():
     assert format_uptime(now - (1 * 24 * 60 + 30) * 60_000) == "1d"
 
 
-# Tests for updated_at
-
-
-def test_lode_updated_at_default():
-    """Lode with updated_at=0 uses created_at as effective value."""
-    lode = Lode(id="test", stage="ore", created_at=1000, updated_at=0)
-    assert lode.effective_updated_at == 1000
-
-
-def test_lode_updated_at_set():
-    """Lode with updated_at set uses that value."""
-    lode = Lode(id="test", stage="ore", created_at=1000, updated_at=2000)
-    assert lode.effective_updated_at == 2000
-
-
-def test_lode_touch():
+def test_touch():
     """touch() updates the updated_at timestamp."""
-    lode = Lode(id="test", stage="ore", created_at=1000, updated_at=1000)
-    lode.touch()
-    assert lode.updated_at > 1000
-
-
-def test_lode_to_dict_includes_updated_at():
-    """to_dict includes updated_at field."""
-    lode = Lode(id="test", stage="ore", created_at=1000, updated_at=2000)
-    data = lode.to_dict()
-    assert data["updated_at"] == 2000
+    lode = {"id": "testid11", "stage": "ore", "created_at": 1000, "updated_at": 1000}
+    touch(lode)
+    assert lode["updated_at"] > 1000
 
 
 def test_update_lode_stage_touches(temp_config):
     """update_lode_stage updates the timestamp."""
-    lodes_list = [Lode(id="test-id", stage="ore", created_at=1000, updated_at=1000)]
+    lodes_list = [
+        {"id": "testid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"}
+    ]
     save_lodes(lodes_list)
 
-    updated = update_lode_stage(lodes_list, "test-id", "processing")
+    updated = update_lode_stage(lodes_list, "testid11", "processing")
 
     assert updated is not None
-    assert updated.updated_at > 1000
+    assert updated["updated_at"] > 1000
 
 
 def test_update_lode_state(temp_config):
     """update_lode_state changes state and message, touches timestamp."""
-    lodes_list = [Lode(id="test-id", stage="ore", created_at=1000, updated_at=1000, state="new")]
+    lodes_list = [
+        {"id": "testid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"}
+    ]
     save_lodes(lodes_list)
 
-    updated = update_lode_state(lodes_list, "test-id", "running", "Claude running")
+    updated = update_lode_state(lodes_list, "testid11", "running", "Claude running")
 
     assert updated is not None
-    assert updated.state == "running"
-    assert updated.status == "Claude running"
-    assert updated.updated_at > 1000
+    assert updated["state"] == "running"
+    assert updated["status"] == "Claude running"
+    assert updated["updated_at"] > 1000
 
     # Verify persistence
     loaded = load_lodes()
-    assert loaded[0].state == "running"
-    assert loaded[0].status == "Claude running"
+    assert loaded[0]["state"] == "running"
+    assert loaded[0]["status"] == "Claude running"
 
 
 def test_update_lode_state_not_found(temp_config):
@@ -456,7 +377,7 @@ def test_update_lode_state_not_found(temp_config):
 
 
 def test_lode_backlog_field_roundtrip():
-    """backlog field survives to_dict/from_dict roundtrip."""
+    """backlog field survives json roundtrip."""
     backlog_data = {
         "id": "bl123456",
         "project": "proj",
@@ -464,37 +385,17 @@ def test_lode_backlog_field_roundtrip():
         "created_at": 1000,
         "lode_id": None,
     }
-    lode = Lode(
-        id="abc-123",
-        stage="ore",
-        created_at=1000,
-        updated_at=1000,
-        state="new",
-        backlog=backlog_data,
-    )
-    restored = Lode.from_dict(lode.to_dict())
-    assert restored.backlog == backlog_data
-    assert restored.backlog["project"] == "proj"
-
-
-def test_lode_backlog_field_default_none():
-    """backlog defaults to None."""
-    lode = Lode(id="abc-123", stage="ore", created_at=1000)
-    assert lode.backlog is None
-    assert lode.to_dict()["backlog"] is None
-
-
-def test_lode_from_dict_backwards_compat_backlog():
-    """Lodes without 'backlog' field default to None."""
-    data = {
-        "id": "abc-123",
+    lode = {
+        "id": "abc12345",
         "stage": "ore",
         "created_at": 1000,
         "updated_at": 1000,
         "state": "new",
+        "backlog": backlog_data,
     }
-    lode = Lode.from_dict(data)
-    assert lode.backlog is None
+    restored = json.loads(json.dumps(lode))
+    assert restored["backlog"] == backlog_data
+    assert restored["backlog"]["project"] == "proj"
 
 
 # Tests for format_duration_ms

@@ -21,12 +21,12 @@ from hopper.backlog import (
     find_by_prefix as find_backlog_by_prefix,
 )
 from hopper.lodes import (
-    Lode,
     archive_lode,
     create_lode,
     current_time_ms,
     load_lodes,
     save_lodes,
+    touch,
     update_lode_stage,
     update_lode_state,
     update_lode_status,
@@ -71,11 +71,15 @@ class Server:
         self.server_socket: socket.socket | None = None
         self.broadcast_queue: queue.Queue = queue.Queue(maxsize=10000)
         self.writer_thread: threading.Thread | None = None
-        self.lodes: list[Lode] = []
+        self.lodes: list[dict] = []
         self.backlog: list[BacklogItem] = []
         # Lode ownership tracking: lode_id -> socket, socket -> lode_id
         self.lode_clients: dict[str, socket.socket] = {}
         self.client_lodes: dict[socket.socket, str] = {}
+
+    def _find_lode(self, lode_id: str) -> dict | None:
+        """Find a lode by ID."""
+        return next((lode for lode in self.lodes if lode["id"] == lode_id), None)
 
     def start(self) -> None:
         """Start the server (blocking)."""
@@ -86,9 +90,9 @@ class Server:
         # Clear stale active flags from previous run (no clients connected yet)
         stale = False
         for lode in self.lodes:
-            if lode.active or lode.tmux_pane:
-                lode.active = False
-                lode.tmux_pane = None
+            if lode.get("active") or lode.get("tmux_pane"):
+                lode["active"] = False
+                lode["tmux_pane"] = None
                 stale = True
         if stale:
             save_lodes(self.lodes)
@@ -175,17 +179,17 @@ class Server:
         if not lode_id:
             return
 
-        lode = next((s for s in self.lodes if s.id == lode_id), None)
+        lode = self._find_lode(lode_id)
         if not lode:
             return
 
-        lode.active = False
-        lode.tmux_pane = None
-        lode.touch()
+        lode["active"] = False
+        lode["tmux_pane"] = None
+        touch(lode)
         save_lodes(self.lodes)
 
         logger.debug(f"Lode {lode_id} disconnected, active=False")
-        self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
+        self.broadcast({"type": "lode_updated", "lode": lode})
 
     def _register_lode_client(
         self, lode_id: str, conn: socket.socket, tmux_pane: str | None = None
@@ -213,14 +217,14 @@ class Server:
             self.client_lodes[conn] = lode_id
 
         # Set active on the lode
-        lode = next((s for s in self.lodes if s.id == lode_id), None)
+        lode = self._find_lode(lode_id)
         if lode:
-            lode.active = True
+            lode["active"] = True
             if tmux_pane:
-                lode.tmux_pane = tmux_pane
-            lode.touch()
+                lode["tmux_pane"] = tmux_pane
+            touch(lode)
             save_lodes(self.lodes)
-            self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
+            self.broadcast({"type": "lode_updated", "lode": lode})
 
         logger.debug(f"Registered client for lode {lode_id}, active=True")
 
@@ -236,8 +240,8 @@ class Server:
                 "tmux": self.tmux_location,
             }
             if lode_id:
-                lode = next((s for s in self.lodes if s.id == lode_id), None)
-                response["lode"] = lode.to_dict() if lode else None
+                lode = self._find_lode(lode_id)
+                response["lode"] = lode if lode else None
                 response["lode_found"] = lode is not None
 
             self._send_response(conn, response)
@@ -246,7 +250,7 @@ class Server:
             # Persistent connection claims ownership of a lode (sets active=True)
             lode_id = message.get("lode_id")
             if lode_id:
-                lode = next((s for s in self.lodes if s.id == lode_id), None)
+                lode = self._find_lode(lode_id)
                 if lode:
                     tmux_pane = message.get("tmux_pane")
                     self._register_lode_client(lode_id, conn, tmux_pane)
@@ -255,13 +259,12 @@ class Server:
             self._send_response(conn, {"type": "pong"})
 
         elif msg_type == "lode_list":
-            lodes_data = [s.to_dict() for s in self.lodes]
-            self._send_response(conn, {"type": "lode_list", "lodes": lodes_data})
+            self._send_response(conn, {"type": "lode_list", "lodes": self.lodes})
 
         elif msg_type == "lode_create":
             project = message.get("project", "")
             lode = create_lode(self.lodes, project)
-            self.broadcast({"type": "lode_created", "lode": lode.to_dict()})
+            self.broadcast({"type": "lode_created", "lode": lode})
 
         elif msg_type == "lode_update":
             lode_id = message.get("lode_id")
@@ -269,14 +272,14 @@ class Server:
             if lode_id and stage:
                 lode = update_lode_stage(self.lodes, lode_id, stage)
                 if lode:
-                    self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
+                    self.broadcast({"type": "lode_updated", "lode": lode})
 
         elif msg_type == "lode_archive":
             lode_id = message.get("lode_id")
             if lode_id:
                 lode = archive_lode(self.lodes, lode_id)
                 if lode:
-                    self.broadcast({"type": "lode_archived", "lode": lode.to_dict()})
+                    self.broadcast({"type": "lode_archived", "lode": lode})
 
         elif msg_type == "lode_set_state":
             lode_id = message.get("lode_id")
@@ -285,7 +288,7 @@ class Server:
             if lode_id and state:
                 lode = update_lode_state(self.lodes, lode_id, state, status)
                 if lode:
-                    self.broadcast({"type": "lode_state_changed", "lode": lode.to_dict()})
+                    self.broadcast({"type": "lode_state_changed", "lode": lode})
 
         elif msg_type == "lode_set_status":
             lode_id = message.get("lode_id")
@@ -293,18 +296,18 @@ class Server:
             if lode_id:
                 lode = update_lode_status(self.lodes, lode_id, status)
                 if lode:
-                    self.broadcast({"type": "lode_status_changed", "lode": lode.to_dict()})
+                    self.broadcast({"type": "lode_status_changed", "lode": lode})
 
         elif msg_type == "lode_set_codex_thread":
             lode_id = message.get("lode_id")
             thread_id = message.get("codex_thread_id")
             if lode_id and thread_id:
-                lode = next((s for s in self.lodes if s.id == lode_id), None)
+                lode = self._find_lode(lode_id)
                 if lode:
-                    lode.codex_thread_id = thread_id
-                    lode.touch()
+                    lode["codex_thread_id"] = thread_id
+                    touch(lode)
                     save_lodes(self.lodes)
-                    self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
+                    self.broadcast({"type": "lode_updated", "lode": lode})
 
         elif msg_type == "backlog_list":
             items_data = [item.to_dict() for item in self.backlog]
@@ -332,7 +335,7 @@ class Server:
     def _send_response(self, conn: socket.socket, message: dict) -> None:
         """Send a response directly to a client."""
         if "ts" not in message:
-            message["ts"] = int(time.time() * 1000)
+            message["ts"] = current_time_ms()
         response = json.dumps(message) + "\n"
         try:
             conn.sendall(response.encode("utf-8"))
@@ -352,7 +355,7 @@ class Server:
     def _send_to_clients(self, message: dict) -> None:
         """Send a message to all connected clients."""
         if "ts" not in message:
-            message["ts"] = int(time.time() * 1000)
+            message["ts"] = current_time_ms()
 
         data = (json.dumps(message) + "\n").encode("utf-8")
 

@@ -6,7 +6,7 @@ import secrets
 from dataclasses import dataclass
 
 from hopper import config
-from hopper.lodes import current_time_ms
+from hopper.lodes import ID_ALPHABET, ID_LEN, current_time_ms
 
 
 @dataclass
@@ -78,7 +78,7 @@ def add_backlog_item(
     # Generate unique ID (collision unlikely but check anyway)
     existing_ids = {item.id for item in items}
     for _ in range(100):
-        new_id = secrets.token_hex(4)
+        new_id = "".join(secrets.choice(ID_ALPHABET) for _ in range(ID_LEN))
         if new_id not in existing_ids:
             break
     else:

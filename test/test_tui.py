@@ -5,7 +5,6 @@ from unittest.mock import patch
 import pytest
 from textual.app import App
 
-from hopper.lodes import Lode
 from hopper.projects import Project
 from hopper.tui import (
     STAGE_ORE,
@@ -33,7 +32,7 @@ from hopper.tui import (
 
 def test_lode_to_row_new():
     """New session has new status indicator."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="new")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "new"}
     row = lode_to_row(session)
     assert row.id == "abcd1234"
     assert row.status == STATUS_NEW
@@ -42,7 +41,7 @@ def test_lode_to_row_new():
 
 def test_lode_to_row_running():
     """Running session has running status indicator."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="running")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "running"}
     row = lode_to_row(session)
     assert row.id == "abcd1234"
     assert row.status == STATUS_RUNNING
@@ -51,7 +50,7 @@ def test_lode_to_row_running():
 
 def test_lode_to_row_stuck():
     """Stuck session has stuck status indicator."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="stuck")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "stuck"}
     row = lode_to_row(session)
     assert row.id == "abcd1234"
     assert row.status == STATUS_STUCK
@@ -60,7 +59,7 @@ def test_lode_to_row_stuck():
 
 def test_lode_to_row_error():
     """Error session has error status indicator."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="error")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "error"}
     row = lode_to_row(session)
     assert row.id == "abcd1234"
     assert row.status == STATUS_ERROR
@@ -69,42 +68,48 @@ def test_lode_to_row_error():
 
 def test_lode_to_row_active():
     """Active session has active=True in row."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="running", active=True)
+    session = {
+        "id": "abcd1234",
+        "stage": "ore",
+        "created_at": 1000,
+        "state": "running",
+        "active": True,
+    }
     row = lode_to_row(session)
     assert row.active is True
 
 
 def test_lode_to_row_inactive():
     """Inactive session has active=False in row."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="new")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "new"}
     row = lode_to_row(session)
     assert row.active is False
 
 
 def test_lode_to_row_processing_stage():
     """Processing session has gear stage indicator."""
-    session = Lode(id="abcd1234", stage="processing", created_at=1000, state="new")
+    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "new"}
     row = lode_to_row(session)
     assert row.stage == STAGE_PROCESSING
 
 
 def test_lode_to_row_completed():
     """Completed session shows running indicator (transient state)."""
-    session = Lode(id="abcd1234", stage="ore", created_at=1000, state="completed")
+    session = {"id": "abcd1234", "stage": "ore", "created_at": 1000, "state": "completed"}
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
 
 def test_lode_to_row_ready():
     """Ready session shows running indicator (active work)."""
-    session = Lode(id="abcd1234", stage="processing", created_at=1000, state="ready")
+    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "ready"}
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
 
 def test_lode_to_row_task_state():
     """Task-name state shows running indicator (active work)."""
-    session = Lode(id="abcd1234", stage="processing", created_at=1000, state="audit")
+    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "audit"}
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
@@ -269,7 +274,7 @@ class MockServer:
 
     def __init__(
         self,
-        sessions: list[Lode] | None = None,
+        sessions: list[dict] | None = None,
         backlog: list | None = None,
         git_hash: str | None = None,
         started_at: int | None = None,
@@ -341,8 +346,8 @@ async def test_app_handles_no_git_hash_or_uptime():
 async def test_app_with_lodes():
     """App should display all sessions in unified table."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="processing", created_at=2000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "processing", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -366,8 +371,8 @@ async def test_quit_with_q():
 async def test_cursor_down_navigation():
     """down should move cursor down."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="ore", created_at=2000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "ore", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -384,8 +389,8 @@ async def test_cursor_down_navigation():
 async def test_cursor_up_navigation():
     """up should move cursor up."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="ore", created_at=2000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "ore", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -403,9 +408,9 @@ async def test_cursor_up_navigation():
 async def test_cursor_preserved_after_refresh():
     """Cursor position should be preserved when table is refreshed."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="ore", created_at=2000),
-        Lode(id="cccc3333", stage="ore", created_at=3000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "ore", "created_at": 2000},
+        {"id": "cccc3333", "stage": "ore", "created_at": 3000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -425,15 +430,15 @@ async def test_cursor_preserved_after_refresh():
 async def test_get_lode():
     """_get_lode should find session by ID."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
-        Lode(id="bbbb2222", stage="processing", created_at=2000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "processing", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
     async with app.run_test():
         session = app._get_lode("aaaa1111")
         assert session is not None
-        assert session.id == "aaaa1111"
+        assert session["id"] == "aaaa1111"
 
         session = app._get_lode("nonexistent")
         assert session is None
@@ -696,7 +701,7 @@ async def test_scope_input_arrow_key_select():
 async def test_hint_row_stays_highlighted():
     """Cursor should stay on hint row across refresh cycles."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -715,7 +720,7 @@ async def test_hint_row_stays_highlighted():
 async def test_enter_on_session_hint_triggers_new_session():
     """Enter on session hint row should trigger new session action."""
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -868,7 +873,7 @@ async def test_tab_switches_focus_to_backlog():
         BacklogItem(id="bl111111", project="proj", description="Item", created_at=1000),
     ]
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
     ]
     server = MockServer(sessions, backlog=items)
     app = HopperApp(server=server)
@@ -889,7 +894,7 @@ async def test_tab_switches_to_backlog_even_when_empty():
     from hopper.tui import BacklogTable, LodeTable
 
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -956,7 +961,7 @@ async def test_delete_noop_on_session_table():
         BacklogItem(id="bl111111", project="proj", description="Item", created_at=1000),
     ]
     sessions = [
-        Lode(id="aaaa1111", stage="ore", created_at=1000),
+        {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
     ]
     server = MockServer(sessions, backlog=items)
     app = HopperApp(server=server)
@@ -1157,11 +1162,11 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
         # Lode should be created
         assert len(app._lodes) == 1
         session = app._lodes[0]
-        assert session.project == "testproj"
-        assert session.scope == "Promote me"
-        assert session.backlog is not None
-        assert session.backlog["id"] == "bl111111"
-        assert session.backlog["description"] == "Promote me"
+        assert session["project"] == "testproj"
+        assert session["scope"] == "Promote me"
+        assert session["backlog"] is not None
+        assert session["backlog"]["id"] == "bl111111"
+        assert session["backlog"]["description"] == "Promote me"
         # Should have spawned in background
         assert len(spawned) == 1
         assert spawned[0]["fg"] is False
@@ -1274,9 +1279,9 @@ async def test_enter_on_processing_ready_opens_shovel_review(temp_config):
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShovelReviewScreen
 
-    session = Lode(id="aaaa1111", stage="processing", state="ready", created_at=1000)
+    session = {"id": "aaaa1111", "stage": "processing", "state": "ready", "created_at": 1000}
     # Write a shovel.md for this session
-    session_dir = get_lode_dir(session.id)
+    session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
     (session_dir / "shovel.md").write_text("The shovel prompt")
 
@@ -1299,8 +1304,8 @@ async def test_shovel_review_save_writes_file(temp_config):
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShovelReviewScreen
 
-    session = Lode(id="aaaa1111", stage="processing", state="ready", created_at=1000)
-    session_dir = get_lode_dir(session.id)
+    session = {"id": "aaaa1111", "stage": "processing", "state": "ready", "created_at": 1000}
+    session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
     (session_dir / "shovel.md").write_text("Original shovel")
 
@@ -1327,14 +1332,14 @@ async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShovelReviewScreen
 
-    session = Lode(
-        id="aaaa1111",
-        stage="processing",
-        state="ready",
-        created_at=1000,
-        project="testproj",
-    )
-    session_dir = get_lode_dir(session.id)
+    session = {
+        "id": "aaaa1111",
+        "stage": "processing",
+        "state": "ready",
+        "created_at": 1000,
+        "project": "testproj",
+    }
+    session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
     (session_dir / "shovel.md").write_text("Shovel content")
 
@@ -1365,7 +1370,7 @@ async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
         assert (session_dir / "shovel.md").read_text() == "Edited for processing"
         # Should have spawned refine in background
         assert len(spawned) == 1
-        assert spawned[0]["sid"] == session.id
+        assert spawned[0]["sid"] == session["id"]
         assert spawned[0]["fg"] is False
         assert spawned[0]["stage"] == "processing"
 
@@ -1373,7 +1378,7 @@ async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
 @pytest.mark.asyncio
 async def test_enter_on_non_ready_processing_spawns_directly(monkeypatch, temp_config):
     """Enter on a processing session that is NOT ready should spawn directly."""
-    session = Lode(id="aaaa1111", stage="processing", state="running", created_at=1000)
+    session = {"id": "aaaa1111", "stage": "processing", "state": "running", "created_at": 1000}
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
@@ -1544,9 +1549,9 @@ async def test_enter_on_ship_ready_opens_ship_review(temp_config):
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShipReviewScreen
 
-    session = Lode(id="aaaa1111", stage="ship", state="ready", created_at=1000)
+    session = {"id": "aaaa1111", "stage": "ship", "state": "ready", "created_at": 1000}
     # Create worktree directory for this session
-    session_dir = get_lode_dir(session.id)
+    session_dir = get_lode_dir(session["id"])
     worktree = session_dir / "worktree"
     worktree.mkdir(parents=True, exist_ok=True)
 
@@ -1565,14 +1570,14 @@ async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShipReviewScreen
 
-    session = Lode(
-        id="aaaa1111",
-        stage="ship",
-        state="ready",
-        created_at=1000,
-        project="testproj",
-    )
-    session_dir = get_lode_dir(session.id)
+    session = {
+        "id": "aaaa1111",
+        "stage": "ship",
+        "state": "ready",
+        "created_at": 1000,
+        "project": "testproj",
+    }
+    session_dir = get_lode_dir(session["id"])
     worktree = session_dir / "worktree"
     worktree.mkdir(parents=True, exist_ok=True)
 
@@ -1596,7 +1601,7 @@ async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
             await pilot.press("enter")
 
             assert len(spawned) == 1
-            assert spawned[0]["sid"] == session.id
+            assert spawned[0]["sid"] == session["id"]
             assert spawned[0]["fg"] is False
             assert spawned[0]["stage"] == "ship"
 
@@ -1607,14 +1612,14 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShipReviewScreen
 
-    session = Lode(
-        id="aaaa1111",
-        stage="ship",
-        state="ready",
-        created_at=1000,
-        project="testproj",
-    )
-    session_dir = get_lode_dir(session.id)
+    session = {
+        "id": "aaaa1111",
+        "stage": "ship",
+        "state": "ready",
+        "created_at": 1000,
+        "project": "testproj",
+    }
+    session_dir = get_lode_dir(session["id"])
     worktree = session_dir / "worktree"
     worktree.mkdir(parents=True, exist_ok=True)
 
@@ -1638,12 +1643,12 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
             await pilot.press("enter")
 
             # Lode stage should be changed back to processing
-            assert session.stage == "processing"
-            assert session.state == "running"
-            assert session.status == "Resuming refine"
+            assert session["stage"] == "processing"
+            assert session["state"] == "running"
+            assert session["status"] == "Resuming refine"
 
             # Should have spawned refine in background
             assert len(spawned) == 1
-            assert spawned[0]["sid"] == session.id
+            assert spawned[0]["sid"] == session["id"]
             assert spawned[0]["fg"] is False
             assert spawned[0]["stage"] == "processing"

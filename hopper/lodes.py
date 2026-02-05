@@ -1,15 +1,30 @@
-"""Lode management for hopper."""
+"""Lode management for hopper.
+
+Lodes are plain dicts with these fields:
+- id: str - 8-character base32 ID
+- stage: str - "ore", "processing", or "ship"
+- created_at: int - milliseconds since epoch
+- project: str - project name (default "")
+- scope: str - user's task scope description (default "")
+- updated_at: int - milliseconds since epoch (default 0, meaning use created_at)
+- state: str - "new", "running", "stuck", "error", etc. (default "new")
+- status: str - human-readable status text (default "")
+- active: bool - whether a runner client is connected (default False)
+- tmux_pane: str | None - tmux pane ID (default None)
+- codex_thread_id: str | None - Codex thread ID for stage resumption (default None)
+- backlog: dict | None - original backlog item data if promoted (default None)
+"""
 
 import json
 import os
 import secrets
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from hopper import config
 
-ID_LEN = 8  # Lode ID length (8 hex chars = 4 bytes)
+ID_LEN = 8  # Lode ID length (8 base32 chars)
+ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"  # lowercase base32
 
 
 def current_time_ms() -> int:
@@ -106,64 +121,9 @@ def format_duration_ms(duration_ms: int) -> str:
     return f"{hours}h"
 
 
-@dataclass
-class Lode:
-    """A hopper lode."""
-
-    id: str
-    stage: str  # "ore", "processing", or "ship"
-    created_at: int  # milliseconds since epoch
-    project: str = ""  # Project name this lode belongs to
-    scope: str = ""  # User's task scope description
-    updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
-    state: str = "new"  # Freeform: "new", "running", "stuck", "error", task names, etc.
-    status: str = ""  # Human-readable status text
-    active: bool = False  # Whether a hop ore client is connected
-    tmux_pane: str | None = None  # tmux pane ID (e.g., "%1")
-    codex_thread_id: str | None = None  # Codex thread ID for stage resumption
-    backlog: dict | None = None  # Original backlog item data if promoted from backlog
-
-    @property
-    def effective_updated_at(self) -> int:
-        """Return updated_at, falling back to created_at if not set."""
-        return self.updated_at if self.updated_at else self.created_at
-
-    def touch(self) -> None:
-        """Update the updated_at timestamp to now."""
-        self.updated_at = current_time_ms()
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "stage": self.stage,
-            "created_at": self.created_at,
-            "project": self.project,
-            "scope": self.scope,
-            "updated_at": self.effective_updated_at,
-            "state": self.state,
-            "status": self.status,
-            "active": self.active,
-            "tmux_pane": self.tmux_pane,
-            "codex_thread_id": self.codex_thread_id,
-            "backlog": self.backlog,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "Lode":
-        return cls(
-            id=data["id"],
-            stage=data["stage"],
-            created_at=data["created_at"],
-            project=data.get("project", ""),  # Backwards compat
-            scope=data.get("scope", ""),  # Backwards compat
-            updated_at=data["updated_at"],
-            state=data["state"],
-            status=data.get("status", ""),
-            active=data.get("active", False),  # Backwards compat
-            tmux_pane=data.get("tmux_pane"),
-            codex_thread_id=data.get("codex_thread_id"),
-            backlog=data.get("backlog"),
-        )
+def touch(lode: dict) -> None:
+    """Update a lode's updated_at timestamp to now."""
+    lode["updated_at"] = current_time_ms()
 
 
 def get_lode_dir(lode_id: str) -> Path:
@@ -171,7 +131,7 @@ def get_lode_dir(lode_id: str) -> Path:
     return config.hopper_dir() / "lodes" / lode_id
 
 
-def load_lodes() -> list[Lode]:
+def load_lodes() -> list[dict]:
     """Load active lodes from JSONL file."""
     lodes_file = config.hopper_dir() / "active.jsonl"
     if not lodes_file.exists():
@@ -182,12 +142,11 @@ def load_lodes() -> list[Lode]:
         for line in f:
             line = line.strip()
             if line:
-                data = json.loads(line)
-                lodes.append(Lode.from_dict(data))
+                lodes.append(json.loads(line))
     return lodes
 
 
-def save_lodes(lodes: list[Lode]) -> None:
+def save_lodes(lodes: list[dict]) -> None:
     """Atomically save lodes to JSONL file."""
     lodes_file = config.hopper_dir() / "active.jsonl"
     lodes_file.parent.mkdir(parents=True, exist_ok=True)
@@ -195,13 +154,13 @@ def save_lodes(lodes: list[Lode]) -> None:
     tmp_path = lodes_file.with_suffix(".jsonl.tmp")
     with open(tmp_path, "w") as f:
         for lode in lodes:
-            f.write(json.dumps(lode.to_dict()) + "\n")
+            f.write(json.dumps(lode) + "\n")
 
     os.replace(tmp_path, lodes_file)
 
 
-def _generate_lode_id(lodes: list[Lode]) -> str:
-    """Generate a unique 8-character hex lode ID.
+def _generate_lode_id(lodes: list[dict]) -> str:
+    """Generate a unique 8-character base32 lode ID.
 
     Checks for collisions against active lodes, archived lodes, and existing
     lode directories.
@@ -223,11 +182,11 @@ def _generate_lode_id(lodes: list[Lode]) -> str:
     existing_dir_names = {d.name for d in existing_dirs}
 
     # Active lode IDs
-    active_ids = {lode.id for lode in lodes}
+    active_ids = {lode["id"] for lode in lodes}
 
     # Generate until unique
     for _ in range(100):  # Safety limit
-        new_id = secrets.token_hex(4)  # 8 hex chars
+        new_id = "".join(secrets.choice(ID_ALPHABET) for _ in range(ID_LEN))
         if (
             new_id not in active_ids
             and new_id not in archived_ids
@@ -238,7 +197,7 @@ def _generate_lode_id(lodes: list[Lode]) -> str:
     raise RuntimeError("Failed to generate unique lode ID after 100 attempts")
 
 
-def create_lode(lodes: list[Lode], project: str, scope: str = "") -> Lode:
+def create_lode(lodes: list[dict], project: str, scope: str = "") -> dict:
     """Create a new lode, add to list, and create its directory.
 
     Args:
@@ -247,91 +206,79 @@ def create_lode(lodes: list[Lode], project: str, scope: str = "") -> Lode:
         scope: User's task scope description.
 
     Returns:
-        The newly created lode.
+        The newly created lode dict.
     """
     now = current_time_ms()
-    lode = Lode(
-        id=_generate_lode_id(lodes),
-        stage="ore",
-        created_at=now,
-        project=project,
-        scope=scope,
-        updated_at=now,
-        state="new",
-        status="Ready to start",
-    )
+    lode = {
+        "id": _generate_lode_id(lodes),
+        "stage": "ore",
+        "created_at": now,
+        "project": project,
+        "scope": scope,
+        "updated_at": now,
+        "state": "new",
+        "status": "Ready to start",
+        "active": False,
+        "tmux_pane": None,
+        "codex_thread_id": None,
+        "backlog": None,
+    }
     lodes.append(lode)
-    get_lode_dir(lode.id).mkdir(parents=True, exist_ok=True)
+    get_lode_dir(lode["id"]).mkdir(parents=True, exist_ok=True)
     save_lodes(lodes)
     return lode
 
 
-def update_lode_stage(lodes: list[Lode], lode_id: str, stage: str) -> Lode | None:
+def update_lode_stage(lodes: list[dict], lode_id: str, stage: str) -> dict | None:
     """Update a lode's stage. Returns the updated lode or None if not found."""
     for lode in lodes:
-        if lode.id == lode_id:
-            lode.stage = stage
-            lode.touch()
+        if lode["id"] == lode_id:
+            lode["stage"] = stage
+            touch(lode)
             save_lodes(lodes)
             return lode
     return None
 
 
-def archive_lode(lodes: list[Lode], lode_id: str) -> Lode | None:
+def archive_lode(lodes: list[dict], lode_id: str) -> dict | None:
     """Archive a lode: append to archived.jsonl and remove from active list.
 
     The lode directory is left intact.
     Returns the archived lode or None if not found.
     """
     for i, lode in enumerate(lodes):
-        if lode.id == lode_id:
+        if lode["id"] == lode_id:
             archived = lodes.pop(i)
 
             # Append to archive file
             archived_file = config.hopper_dir() / "archived.jsonl"
             archived_file.parent.mkdir(parents=True, exist_ok=True)
             with open(archived_file, "a") as f:
-                f.write(json.dumps(archived.to_dict()) + "\n")
+                f.write(json.dumps(archived) + "\n")
 
             save_lodes(lodes)
             return archived
     return None
 
 
-def update_lode_state(lodes: list[Lode], lode_id: str, state: str, status: str) -> Lode | None:
+def update_lode_state(lodes: list[dict], lode_id: str, state: str, status: str) -> dict | None:
     """Update a lode's state and status. Returns the updated lode or None if not found."""
     for lode in lodes:
-        if lode.id == lode_id:
-            lode.state = state
-            lode.status = status
-            lode.touch()
+        if lode["id"] == lode_id:
+            lode["state"] = state
+            lode["status"] = status
+            touch(lode)
             save_lodes(lodes)
             return lode
     return None
 
 
-def update_lode_status(lodes: list[Lode], lode_id: str, status: str) -> Lode | None:
+def update_lode_status(lodes: list[dict], lode_id: str, status: str) -> dict | None:
     """Update a lode's status text only. Returns the updated lode or None if not found."""
     for lode in lodes:
-        if lode.id == lode_id:
-            lode.status = status
-            lode.touch()
+        if lode["id"] == lode_id:
+            lode["status"] = status
+            touch(lode)
             save_lodes(lodes)
             return lode
-    return None
-
-
-def find_by_prefix(lodes: list[Lode], prefix: str) -> Lode | None:
-    """Find a lode by ID prefix.
-
-    Args:
-        lodes: List of lodes to search
-        prefix: ID prefix to match
-
-    Returns:
-        The matching lode, or None if not found or ambiguous (multiple matches)
-    """
-    matches = [s for s in lodes if s.id.startswith(prefix)]
-    if len(matches) == 1:
-        return matches[0]
     return None

@@ -87,9 +87,8 @@ def test_connect_with_tmux_location(server_with_tmux, socket_path):
 
 def test_connect_with_lode_id_found(server, socket_path):
     """Connect returns session data when session exists."""
-    from hopper.lodes import Lode
 
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
+    session = {"id": "test-id", "stage": "ore", "created_at": 1000, "state": "new"}
     server.lodes = [session]
 
     result = connect(socket_path, lode_id="test-id")
@@ -149,9 +148,8 @@ def test_lode_exists_not_found(server, socket_path):
 
 def test_lode_exists_found(server, socket_path):
     """lode_exists returns True when session exists."""
-    from hopper.lodes import Lode
 
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
+    session = {"id": "test-id", "stage": "ore", "created_at": 1000, "state": "new"}
     server.lodes = [session]
 
     result = lode_exists(socket_path, "test-id")
@@ -168,10 +166,9 @@ def test_set_lode_state_no_server(socket_path):
 
 def test_set_lode_state_sends_message(server, socket_path):
     """set_lode_state sends the correct message type."""
-    from hopper.lodes import Lode
 
     # Create a session first
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
+    session = {"id": "test-id", "stage": "ore", "created_at": 1000, "state": "new"}
     server.lodes = [session]
 
     result = set_lode_state(socket_path, "test-id", "running", "Claude running")
@@ -181,8 +178,8 @@ def test_set_lode_state_sends_message(server, socket_path):
     time.sleep(0.1)
 
     # Lode should be updated
-    assert server.lodes[0].state == "running"
-    assert server.lodes[0].status == "Claude running"
+    assert server.lodes[0]["state"] == "running"
+    assert server.lodes[0]["status"] == "Claude running"
 
 
 class TestHopperConnection:
@@ -227,10 +224,9 @@ class TestHopperConnection:
 
     def test_emit_updates_session_state(self, socket_path, server):
         """Emit can send session state updates."""
-        from hopper.lodes import Lode
 
         # Create a session
-        session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
+        session = {"id": "test-id", "stage": "ore", "created_at": 1000, "state": "new"}
         server.lodes = [session]
 
         conn = HopperConnection(socket_path)
@@ -248,8 +244,8 @@ class TestHopperConnection:
         conn.stop()
 
         # Lode should be updated
-        assert server.lodes[0].state == "running"
-        assert server.lodes[0].status == "Test"
+        assert server.lodes[0]["state"] == "running"
+        assert server.lodes[0]["status"] == "Test"
 
     def test_callback_receives_messages(self, socket_path, server):
         """Callback is invoked when server sends messages."""

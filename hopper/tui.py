@@ -19,7 +19,6 @@ from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item, u
 from hopper.claude import spawn_claude, switch_to_pane
 from hopper.git import get_diff_stat
 from hopper.lodes import (
-    Lode,
     archive_lode,
     create_lode,
     format_age,
@@ -89,32 +88,34 @@ class Row:
     status_text: str = ""  # Human-readable status text
 
 
-def lode_to_row(lode: Lode) -> Row:
-    """Convert a lode to a display row."""
-    if lode.state == "new":
+def lode_to_row(lode: dict) -> Row:
+    """Convert a lode dict to a display row."""
+    state = lode.get("state", "new")
+    if state == "new":
         status = STATUS_NEW
-    elif lode.state == "error":
+    elif state == "error":
         status = STATUS_ERROR
-    elif lode.state == "stuck":
+    elif state == "stuck":
         status = STATUS_STUCK
     else:
         status = STATUS_RUNNING
 
-    if lode.stage == "ore":
+    lode_stage = lode.get("stage", "ore")
+    if lode_stage == "ore":
         stage = STAGE_ORE
-    elif lode.stage == "ship":
+    elif lode_stage == "ship":
         stage = STAGE_SHIP
     else:
         stage = STAGE_PROCESSING
 
     return Row(
-        id=lode.id,
+        id=lode["id"],
         stage=stage,
-        age=format_age(lode.created_at),
+        age=format_age(lode["created_at"]),
         status=status,
-        active=lode.active,
-        project=lode.project,
-        status_text=lode.status,
+        active=lode.get("active", False),
+        project=lode.get("project", ""),
+        status_text=lode.get("status", ""),
     )
 
 
@@ -748,7 +749,7 @@ class HopperApp(App):
     def __init__(self, server=None):
         super().__init__()
         self.server = server
-        self._lodes: list[Lode] = server.lodes if server else []
+        self._lodes: list[dict] = server.lodes if server else []
         self._backlog: list[BacklogItem] = server.backlog if server else []
         self._projects: list[Project] = []
         self._git_hash: str = server.git_hash if server and server.git_hash else ""
@@ -807,8 +808,8 @@ class HopperApp(App):
         stage_order = {"ore": 0, "processing": 1, "ship": 2}
         rows = [
             lode_to_row(s)
-            for s in sorted(self._lodes, key=lambda s: stage_order.get(s.stage, 3))
-            if s.stage in stage_order
+            for s in sorted(self._lodes, key=lambda s: stage_order.get(s.get("stage", ""), 3))
+            if s.get("stage") in stage_order
         ]
 
         # Get current row keys in table (excluding hint row)
@@ -928,10 +929,10 @@ class HopperApp(App):
                 return item
         return None
 
-    def _get_lode(self, lode_id: str) -> Lode | None:
+    def _get_lode(self, lode_id: str) -> dict | None:
         """Get a lode by ID."""
         for lode in self._lodes:
-            if lode.id == lode_id:
+            if lode["id"] == lode_id:
                 return lode
         return None
 
@@ -956,7 +957,7 @@ class HopperApp(App):
                     return  # Cancelled
                 scope, foreground = result
                 lode = create_lode(self._lodes, project.name, scope)
-                spawn_claude(lode.id, project.path, foreground)
+                spawn_claude(lode["id"], project.path, foreground)
                 self.refresh_table()
 
             self.push_screen(ScopeInputScreen(), on_scope_entered)
@@ -1006,7 +1007,8 @@ class HopperApp(App):
             self.notify(f"Lode {key} not found", severity="error")
             return
 
-        project = find_project(lode.project) if lode.project else None
+        lode_project = lode.get("project", "")
+        project = find_project(lode_project) if lode_project else None
         project_path = project.path if project else None
 
         # Check if project directory still exists
@@ -1014,19 +1016,19 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        if lode.active and lode.tmux_pane:
+        if lode.get("active") and lode.get("tmux_pane"):
             # Lode has a connected runner - switch to its window
-            if not switch_to_pane(lode.tmux_pane):
+            if not switch_to_pane(lode["tmux_pane"]):
                 self.notify("Failed to switch to window", severity="error")
-        elif lode.stage == "processing" and lode.state == "ready":
+        elif lode.get("stage") == "processing" and lode.get("state") == "ready":
             # Shovel complete, ready for processing - review before starting
             self._review_shovel(lode, project_path)
-        elif lode.stage == "ship" and lode.state == "ready":
+        elif lode.get("stage") == "ship" and lode.get("state") == "ready":
             # Refine complete, ready to ship - review changes before shipping
             self._review_ship(lode, project_path)
         else:
             # Lode is not active - spawn runner based on stage
-            if not spawn_claude(lode.id, project_path, stage=lode.stage):
+            if not spawn_claude(lode["id"], project_path, stage=lode.get("stage", "ore")):
                 self.notify("Failed to spawn tmux window", severity="error")
 
         self.refresh_table()
@@ -1064,18 +1066,18 @@ class HopperApp(App):
                 project = find_project(item.project)
                 project_path = project.path if project else None
                 lode = create_lode(self._lodes, item.project, text)
-                lode.backlog = item.to_dict()
+                lode["backlog"] = item.to_dict()
                 save_lodes(self._lodes)
-                spawn_claude(lode.id, project_path, foreground=False)
+                spawn_claude(lode["id"], project_path, foreground=False)
                 remove_backlog_item(self._backlog, item_id)
                 self.refresh_table()
                 self.refresh_backlog()
 
         self.push_screen(BacklogEditScreen(initial_text=item.description), on_edit_result)
 
-    def _review_shovel(self, lode: Lode, project_path: str | None) -> None:
+    def _review_shovel(self, lode: dict, project_path: str | None) -> None:
         """Open the shovel review modal for a processing-ready lode."""
-        shovel_path = get_lode_dir(lode.id) / "shovel.md"
+        shovel_path = get_lode_dir(lode["id"]) / "shovel.md"
         if not shovel_path.exists():
             self.notify("Shovel prompt not found", severity="error")
             return
@@ -1091,14 +1093,14 @@ class HopperApp(App):
             tmp_path.write_text(text)
             os.replace(tmp_path, shovel_path)
             if action == "process":
-                spawn_claude(lode.id, project_path, foreground=False, stage="processing")
+                spawn_claude(lode["id"], project_path, foreground=False, stage="processing")
             self.refresh_table()
 
         self.push_screen(ShovelReviewScreen(initial_text=shovel_text), on_review_result)
 
-    def _review_ship(self, lode: Lode, project_path: str | None) -> None:
+    def _review_ship(self, lode: dict, project_path: str | None) -> None:
         """Open the ship review modal for a ship-ready lode."""
-        worktree_path = get_lode_dir(lode.id) / "worktree"
+        worktree_path = get_lode_dir(lode["id"]) / "worktree"
         if not worktree_path.is_dir():
             self.notify("Worktree not found", severity="error")
             return
@@ -1109,12 +1111,12 @@ class HopperApp(App):
             if result is None:
                 return  # Cancelled
             if result == "ship":
-                spawn_claude(lode.id, project_path, foreground=False, stage="ship")
+                spawn_claude(lode["id"], project_path, foreground=False, stage="ship")
             elif result == "refine":
                 # Change stage back to processing and resume refine
-                update_lode_stage(self._lodes, lode.id, "processing")
-                update_lode_state(self._lodes, lode.id, "running", "Resuming refine")
-                spawn_claude(lode.id, project_path, foreground=False, stage="processing")
+                update_lode_stage(self._lodes, lode["id"], "processing")
+                update_lode_state(self._lodes, lode["id"], "running", "Resuming refine")
+                spawn_claude(lode["id"], project_path, foreground=False, stage="processing")
             self.refresh_table()
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)

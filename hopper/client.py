@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from hopper.lodes import current_time_ms
+
 logger = logging.getLogger(__name__)
 
 
@@ -169,7 +171,7 @@ class HopperConnection:
             logger.debug(f"Thread not running, dropping emit: {msg_type}")
             return False
 
-        message = {"type": msg_type, "ts": int(time.time() * 1000), **fields}
+        message = {"type": msg_type, "ts": current_time_ms(), **fields}
         try:
             self.send_queue.put_nowait(message)
             return True
@@ -247,11 +249,11 @@ def connect(socket_path: Path, lode_id: str | None = None, timeout: float = 2.0)
     Returns:
         Connected response dict with keys:
         - tmux: {"session": str, "window": str} or None
-        - lode: Lode dict if lode_id provided and found, else None
+        - lode: lode dict if lode_id provided and found, else None
         - lode_found: bool if lode_id was provided
         Returns None if server is unreachable.
     """
-    message: dict = {"type": "connect", "ts": int(time.time() * 1000)}
+    message: dict = {"type": "connect", "ts": current_time_ms()}
     if lode_id:
         message["lode_id"] = lode_id
     response = send_message(socket_path, message, timeout=timeout, wait_for_response=True)
@@ -330,7 +332,7 @@ def set_lode_state(
         "lode_id": lode_id,
         "state": state,
         "status": status,
-        "ts": int(time.time() * 1000),
+        "ts": current_time_ms(),
     }
     # Fire-and-forget: don't wait for response
     try:
@@ -356,7 +358,7 @@ def set_lode_status(socket_path: Path, lode_id: str, status: str, timeout: float
         "type": "lode_set_status",
         "lode_id": lode_id,
         "status": status,
-        "ts": int(time.time() * 1000),
+        "ts": current_time_ms(),
     }
     # Fire-and-forget: don't wait for response
     try:
@@ -384,7 +386,7 @@ def set_codex_thread_id(
         "type": "lode_set_codex_thread",
         "lode_id": lode_id,
         "codex_thread_id": codex_thread_id,
-        "ts": int(time.time() * 1000),
+        "ts": current_time_ms(),
     }
     try:
         send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
@@ -416,7 +418,7 @@ def add_backlog(
         "type": "backlog_add",
         "project": project,
         "description": description,
-        "ts": int(time.time() * 1000),
+        "ts": current_time_ms(),
     }
     if lode_id:
         msg["lode_id"] = lode_id
@@ -441,7 +443,7 @@ def remove_backlog(socket_path: Path, item_id: str, timeout: float = 2.0) -> boo
     msg = {
         "type": "backlog_remove",
         "item_id": item_id,
-        "ts": int(time.time() * 1000),
+        "ts": current_time_ms(),
     }
     try:
         send_message(socket_path, msg, timeout=timeout, wait_for_response=False)

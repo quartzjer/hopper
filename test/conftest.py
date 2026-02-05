@@ -24,3 +24,31 @@ def temp_config(isolate_config):
     The isolation is already applied by the autouse isolate_config fixture.
     """
     return isolate_config
+
+
+@pytest.fixture
+def make_lode():
+    """Factory for creating lode dicts with all default fields.
+
+    Returns a callable that creates lode dicts. Override any field via kwargs.
+    """
+
+    def _make(**overrides):
+        lode = {
+            "id": "testid11",
+            "stage": "ore",
+            "created_at": 1000,
+            "updated_at": 1000,
+            "project": "",
+            "scope": "",
+            "state": "new",
+            "status": "",
+            "active": False,
+            "tmux_pane": None,
+            "codex_thread_id": None,
+            "backlog": None,
+            **overrides,
+        }
+        return lode
+
+    return _make

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from hopper.lodes import save_lodes
 from hopper.server import Server, get_git_hash
 
 
@@ -213,13 +214,10 @@ def test_server_handles_connect_with_tmux_location(socket_path, temp_config):
         thread.join(timeout=2)
 
 
-def test_server_handles_connect_with_lode_id(socket_path, server, temp_config):
-    """Server returns session data when lode_id is provided."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
-    server.lodes = [session]
+def test_server_handles_connect_with_lode_id(socket_path, server, temp_config, make_lode):
+    """Server returns lode data when lode_id is provided."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # Connect client
@@ -231,7 +229,7 @@ def test_server_handles_connect_with_lode_id(socket_path, server, temp_config):
     msg = {"type": "connect", "lode_id": "test-id"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
-    # Should receive connected response with session data
+    # Should receive connected response with lode data
     data = client.recv(4096).decode("utf-8")
     response = json.loads(data.strip().split("\n")[0])
 
@@ -244,7 +242,7 @@ def test_server_handles_connect_with_lode_id(socket_path, server, temp_config):
 
 
 def test_server_handles_connect_with_missing_lode_id(socket_path, server):
-    """Server returns session_found=False for unknown session."""
+    """Server returns lode_found=False for unknown lode."""
     # Connect client
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.connect(str(socket_path))
@@ -254,7 +252,7 @@ def test_server_handles_connect_with_missing_lode_id(socket_path, server):
     msg = {"type": "connect", "lode_id": "nonexistent"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
-    # Should receive connected response with session not found
+    # Should receive connected response with lode not found
     data = client.recv(4096).decode("utf-8")
     response = json.loads(data.strip().split("\n")[0])
 
@@ -265,13 +263,10 @@ def test_server_handles_connect_with_missing_lode_id(socket_path, server):
     client.close()
 
 
-def test_server_handles_session_set_state(socket_path, server, temp_config):
-    """Server handles session_set_state message."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
-    server.lodes = [session]
+def test_server_handles_lode_set_state(socket_path, server, temp_config, make_lode):
+    """Server handles lode_set_state message."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # Connect client
@@ -285,7 +280,7 @@ def test_server_handles_session_set_state(socket_path, server, temp_config):
             break
         time.sleep(0.1)
 
-    # Send session_set_state message
+    # Send lode_set_state message
     msg = {"type": "lode_set_state", "lode_id": "test-id", "state": "running"}
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
@@ -297,18 +292,16 @@ def test_server_handles_session_set_state(socket_path, server, temp_config):
     assert response["lode"]["id"] == "test-id"
     assert response["lode"]["state"] == "running"
 
-    # Server's session object should be updated
-    assert server.lodes[0].state == "running"
+    # Server's lode should be updated
+    assert server.lodes[0]["state"] == "running"
 
     client.close()
 
 
-def test_server_connect_does_not_register_ownership(socket_path, server, temp_config):
-    """Connect message returns session data but does not register ownership."""
-    from hopper.lodes import Lode, save_lodes
-
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
-    server.lodes = [session]
+def test_server_connect_does_not_register_ownership(socket_path, server, temp_config, make_lode):
+    """Connect message returns lode data but does not register ownership."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -324,17 +317,15 @@ def test_server_connect_does_not_register_ownership(socket_path, server, temp_co
 
     # Connect should NOT register ownership or set active
     assert "test-id" not in server.lode_clients
-    assert server.lodes[0].active is False
+    assert server.lodes[0]["active"] is False
 
     client.close()
 
 
-def test_server_registers_on_session_register(socket_path, server, temp_config):
-    """session_register message claims ownership and sets active=True."""
-    from hopper.lodes import Lode, save_lodes
-
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
-    server.lodes = [session]
+def test_server_registers_on_lode_register(socket_path, server, temp_config, make_lode):
+    """lode_register message claims ownership and sets active=True."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -351,18 +342,15 @@ def test_server_registers_on_session_register(socket_path, server, temp_config):
         time.sleep(0.1)
 
     assert "test-id" in server.lode_clients
-    assert server.lodes[0].active is True
+    assert server.lodes[0]["active"] is True
 
     client.close()
 
 
-def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config):
+def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config, make_lode):
     """Server sets active=False and clears tmux_pane on client disconnect."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session in running state with tmux window
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="running", tmux_pane="%1")
-    server.lodes = [session]
+    lode = make_lode(id="test-id", state="running", tmux_pane="%1")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # Connect client and register ownership
@@ -379,38 +367,28 @@ def test_server_sets_active_false_on_disconnect(socket_path, server, temp_config
             break
         time.sleep(0.1)
 
-    assert server.lodes[0].active is True
+    assert server.lodes[0]["active"] is True
 
     # Disconnect client
     client.close()
 
     # Wait for disconnect handling
     for _ in range(50):
-        if not server.lodes[0].active:
+        if not server.lodes[0]["active"]:
             break
         time.sleep(0.1)
 
     # active=False, tmux_pane cleared, but state/status untouched
-    assert server.lodes[0].active is False
-    assert server.lodes[0].tmux_pane is None
-    assert server.lodes[0].state == "running"
+    assert server.lodes[0]["active"] is False
+    assert server.lodes[0]["tmux_pane"] is None
+    assert server.lodes[0]["state"] == "running"
     assert "test-id" not in server.lode_clients
 
 
-def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
+def test_server_preserves_state_on_disconnect(socket_path, server, temp_config, make_lode):
     """Server preserves state and status on client disconnect (only toggles active)."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session in error state
-    session = Lode(
-        id="test-id",
-        stage="ore",
-        created_at=1000,
-        state="error",
-        status="Something failed",
-        tmux_pane="%1",
-    )
-    server.lodes = [session]
+    lode = make_lode(id="test-id", state="error", status="Something failed", tmux_pane="%1")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # Connect client and register ownership
@@ -432,23 +410,21 @@ def test_server_preserves_state_on_disconnect(socket_path, server, temp_config):
 
     # Wait for disconnect handling
     for _ in range(50):
-        if server.lodes[0].tmux_pane is None:
+        if server.lodes[0]["tmux_pane"] is None:
             break
         time.sleep(0.1)
 
     # State and status preserved, active set to False
-    assert server.lodes[0].state == "error"
-    assert server.lodes[0].status == "Something failed"
-    assert server.lodes[0].active is False
-    assert server.lodes[0].tmux_pane is None
+    assert server.lodes[0]["state"] == "error"
+    assert server.lodes[0]["status"] == "Something failed"
+    assert server.lodes[0]["active"] is False
+    assert server.lodes[0]["tmux_pane"] is None
 
 
-def test_server_handles_ready_state(socket_path, server, temp_config):
+def test_server_handles_ready_state(socket_path, server, temp_config, make_lode):
     """Server accepts 'ready' as a valid state."""
-    from hopper.lodes import Lode, save_lodes
-
-    session = Lode(id="test-id", stage="processing", created_at=1000, state="completed")
-    server.lodes = [session]
+    lode = make_lode(id="test-id", stage="processing", state="completed")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -478,13 +454,10 @@ def test_server_handles_ready_state(socket_path, server, temp_config):
     client.close()
 
 
-def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_config):
-    """Server disconnects old client when new client registers for same session."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session
-    session = Lode(id="test-id", stage="ore", created_at=1000, state="new")
-    server.lodes = [session]
+def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_config, make_lode):
+    """Server disconnects old client when new client registers for same lode."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # First client registers
@@ -503,7 +476,7 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
 
     old_socket = server.lode_clients["test-id"]
 
-    # Second client registers for same session
+    # Second client registers for same lode
     client2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client2.connect(str(socket_path))
     client2.settimeout(2.0)
@@ -517,7 +490,7 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
             break
         time.sleep(0.1)
 
-    # Second client should now own the session
+    # Second client should now own the lode
     assert "test-id" in server.lode_clients
     assert server.lode_clients["test-id"] != old_socket
 
@@ -525,13 +498,10 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
     client2.close()
 
 
-def test_server_handles_session_set_codex_thread(socket_path, server, temp_config):
-    """Server handles session_set_codex_thread message."""
-    from hopper.lodes import Lode, save_lodes
-
-    # Create a test session
-    session = Lode(id="test-id", stage="processing", created_at=1000, state="running")
-    server.lodes = [session]
+def test_server_handles_lode_set_codex_thread(socket_path, server, temp_config, make_lode):
+    """Server handles lode_set_codex_thread message."""
+    lode = make_lode(id="test-id", stage="processing", state="running")
+    server.lodes = [lode]
     save_lodes(server.lodes)
 
     # Connect client
@@ -545,7 +515,7 @@ def test_server_handles_session_set_codex_thread(socket_path, server, temp_confi
             break
         time.sleep(0.1)
 
-    # Send session_set_codex_thread message
+    # Send lode_set_codex_thread message
     msg = {
         "type": "lode_set_codex_thread",
         "lode_id": "test-id",
@@ -561,7 +531,7 @@ def test_server_handles_session_set_codex_thread(socket_path, server, temp_confi
     assert response["lode"]["id"] == "test-id"
     assert response["lode"]["codex_thread_id"] == "codex-uuid-1234"
 
-    # Server's session object should be updated
-    assert server.lodes[0].codex_thread_id == "codex-uuid-1234"
+    # Server's lode should be updated
+    assert server.lodes[0]["codex_thread_id"] == "codex-uuid-1234"
 
     client.close()

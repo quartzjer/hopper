@@ -15,7 +15,7 @@ def spawn_claude(
         lode_id: The hopper lode ID.
         project_path: Working directory for the Claude session.
         foreground: If True, switch to the new window. If False, stay in current window.
-        stage: Lode stage ("ore", "processing", or "ship") to determine which runner to use.
+        stage: Stage ("ore", "processing", or "ship") to determine which runner to use.
 
     Returns:
         The tmux pane ID on success, None on failure.
