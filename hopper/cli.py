@@ -103,7 +103,7 @@ def require_config_name() -> int | None:
     if "name" not in config:
         print("Please set your name first:")
         print()
-        print("    hop config name <your-name>")
+        print("    hop config set name <your-name>")
         return 1
     return None
 
@@ -344,6 +344,11 @@ def cmd_project(args: list[str]) -> int:
     return 0
 
 
+def _is_simple_value(value: object) -> bool:
+    """Check if a config value is simple (str, int, float, bool)."""
+    return isinstance(value, (str, int, float, bool))
+
+
 @command("config", "Get or set config values")
 def cmd_config(args: list[str]) -> int:
     """Get or set config values used as prompt template variables."""
@@ -353,7 +358,14 @@ def cmd_config(args: list[str]) -> int:
         "config",
         "Get or set config values. Config values are available as $variables in prompts.",
     )
-    parser.add_argument("name", nargs="?", help="Config key name")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=["list", "get", "set", "delete", "json", "path"],
+        default="list",
+        help="Action to perform (default: list)",
+    )
+    parser.add_argument("key", nargs="?", help="Config key name")
     parser.add_argument("value", nargs="?", help="Value to set")
     try:
         parsed = parse_args(parser, args)
@@ -364,30 +376,64 @@ def cmd_config(args: list[str]) -> int:
         parser.print_usage()
         return 1
 
-    config = load_config()
+    import json
 
-    # No args: list all config
-    if not parsed.name:
-        if not config:
-            print("No config set. Use: hop config <name> <value>")
-            return 0
-        for key, value in sorted(config.items()):
-            print(f"{key}={value}")
+    if parsed.action == "path":
+        print(config.hopper_dir())
         return 0
 
-    # One arg: get value
-    if not parsed.value:
-        if parsed.name in config:
-            print(config[parsed.name])
+    cfg = load_config()
+
+    if parsed.action == "json":
+        print(json.dumps(cfg, indent=2))
+        return 0
+
+    if parsed.action == "delete":
+        if not parsed.key:
+            print("error: key required for delete")
+            parser.print_usage()
+            return 1
+        if parsed.key not in cfg:
+            print(f"Config '{parsed.key}' not set.")
+            return 1
+        if not _is_simple_value(cfg[parsed.key]):
+            print(f"Cannot delete complex key '{parsed.key}'. Use its own command.")
+            return 1
+        del cfg[parsed.key]
+        save_config(cfg)
+        print(f"Deleted '{parsed.key}'.")
+        return 0
+
+    if parsed.action == "get":
+        if not parsed.key:
+            print("error: key required for get")
+            parser.print_usage()
+            return 1
+        if parsed.key in cfg:
+            print(cfg[parsed.key])
         else:
-            print(f"Config '{parsed.name}' not set.")
+            print(f"Config '{parsed.key}' not set.")
             return 1
         return 0
 
-    # Two args: set value
-    config[parsed.name] = parsed.value
-    save_config(config)
-    print(f"{parsed.name}={parsed.value}")
+    if parsed.action == "set":
+        if not parsed.key or not parsed.value:
+            print("error: key and value required for set")
+            parser.print_usage()
+            return 1
+        cfg[parsed.key] = parsed.value
+        save_config(cfg)
+        print(f"{parsed.key}={parsed.value}")
+        return 0
+
+    # list (default)
+    print(f"config: {config.hopper_dir()}")
+    simple = {k: v for k, v in cfg.items() if _is_simple_value(v)}
+    if not simple:
+        print("No config set. Use: hop config set <key> <value>")
+        return 0
+    for key, value in sorted(simple.items()):
+        print(f"{key}={value}")
     return 0
 
 

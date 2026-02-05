@@ -274,7 +274,7 @@ def test_up_command_requires_name_config(capsys):
     assert result == 1
     captured = capsys.readouterr()
     assert "Please set your name first" in captured.out
-    assert "hop config name" in captured.out
+    assert "hop config set name" in captured.out
 
 
 # Tests for require_config_name
@@ -295,7 +295,7 @@ def test_require_config_name_failure(capsys):
     assert result == 1
     captured = capsys.readouterr()
     assert "Please set your name first" in captured.out
-    assert "hop config name" in captured.out
+    assert "hop config set name" in captured.out
 
 
 # Tests for require_server
@@ -502,51 +502,142 @@ def test_config_help(capsys):
     assert "$variables" in captured.out
 
 
-def test_config_list_empty(capsys):
-    """config with no args and no config shows help message."""
+def test_config_list_empty(temp_config, capsys):
+    """config with no args and no config shows dir and help message."""
     result = cmd_config([])
     assert result == 0
     captured = capsys.readouterr()
+    assert f"config: {temp_config}" in captured.out
     assert "No config set" in captured.out
 
 
 def test_config_list_values(temp_config, capsys):
-    """config with no args lists all values."""
+    """config with no args lists simple values with dir header."""
     config_file = temp_config / "config.json"
     config_file.write_text('{"name": "jer", "org": "acme"}')
 
     result = cmd_config([])
     assert result == 0
     captured = capsys.readouterr()
+    assert f"config: {temp_config}" in captured.out
     assert "name=jer" in captured.out
     assert "org=acme" in captured.out
 
 
+def test_config_list_hides_complex_values(temp_config, capsys):
+    """config listing filters out complex values like lists and dicts."""
+    import json
+
+    config_file = temp_config / "config.json"
+    config_file.write_text(json.dumps({"name": "jer", "projects": [{"path": "/tmp", "name": "x"}]}))
+
+    result = cmd_config([])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "name=jer" in captured.out
+    assert "projects" not in captured.out
+
+
+def test_config_json(temp_config, capsys):
+    """config json dumps full config including complex values."""
+    import json
+
+    config_file = temp_config / "config.json"
+    data = {"name": "jer", "projects": [{"path": "/tmp", "name": "x"}]}
+    config_file.write_text(json.dumps(data))
+
+    result = cmd_config(["json"])
+    assert result == 0
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert parsed == data
+
+
+def test_config_path(temp_config, capsys):
+    """config path prints the config directory."""
+    result = cmd_config(["path"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert str(temp_config) in captured.out
+
+
+def test_config_delete(temp_config, capsys):
+    """config delete removes a key."""
+    import json
+
+    config_file = temp_config / "config.json"
+    config_file.write_text('{"name": "jer", "org": "acme"}')
+
+    result = cmd_config(["delete", "org"])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "Deleted 'org'" in captured.out
+
+    saved = json.loads(config_file.read_text())
+    assert saved == {"name": "jer"}
+
+
+def test_config_delete_missing(capsys):
+    """config delete on missing key returns error."""
+    result = cmd_config(["delete", "nope"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "not set" in captured.out
+
+
+def test_config_delete_missing_key_arg(capsys):
+    """config delete without a key shows error."""
+    result = cmd_config(["delete"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "key required" in captured.out
+
+
+def test_config_delete_complex_blocked(temp_config, capsys):
+    """config delete refuses to delete complex values."""
+    import json
+
+    config_file = temp_config / "config.json"
+    config_file.write_text(json.dumps({"projects": [{"path": "/tmp", "name": "x"}]}))
+
+    result = cmd_config(["delete", "projects"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Cannot delete complex key" in captured.out
+
+
 def test_config_get_existing(temp_config, capsys):
-    """config name returns value when set."""
+    """config get returns value when set."""
     config_file = temp_config / "config.json"
     config_file.write_text('{"name": "jer"}')
 
-    result = cmd_config(["name"])
+    result = cmd_config(["get", "name"])
     assert result == 0
     captured = capsys.readouterr()
     assert "jer" in captured.out
 
 
 def test_config_get_missing(capsys):
-    """config name returns error when not set."""
-
-    result = cmd_config(["name"])
+    """config get returns error when not set."""
+    result = cmd_config(["get", "name"])
     assert result == 1
     captured = capsys.readouterr()
     assert "Config 'name' not set" in captured.out
 
 
+def test_config_get_missing_key_arg(capsys):
+    """config get without a key shows error."""
+    result = cmd_config(["get"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "key required" in captured.out
+
+
 def test_config_set_value(temp_config, capsys):
-    """config name value sets the value."""
+    """config set stores a value."""
     config_file = temp_config / "config.json"
 
-    result = cmd_config(["name", "jer"])
+    result = cmd_config(["set", "name", "jer"])
     assert result == 0
     captured = capsys.readouterr()
     assert "name=jer" in captured.out
@@ -559,17 +650,25 @@ def test_config_set_value(temp_config, capsys):
 
 
 def test_config_set_updates_existing(temp_config, capsys):
-    """config name value updates existing config."""
+    """config set updates existing config."""
     config_file = temp_config / "config.json"
     config_file.write_text('{"name": "old", "other": "keep"}')
 
-    result = cmd_config(["name", "new"])
+    result = cmd_config(["set", "name", "new"])
     assert result == 0
 
     import json
 
     saved = json.loads(config_file.read_text())
     assert saved == {"name": "new", "other": "keep"}
+
+
+def test_config_set_missing_args(capsys):
+    """config set without key and value shows error."""
+    result = cmd_config(["set"])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "key and value required" in captured.out
 
 
 # Tests for require_projects
