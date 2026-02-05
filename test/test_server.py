@@ -423,7 +423,7 @@ def test_server_preserves_state_on_disconnect(socket_path, server, temp_config, 
 
 def test_server_handles_ready_state(socket_path, server, temp_config, make_lode):
     """Server accepts 'ready' as a valid state."""
-    lode = make_lode(id="test-id", stage="processing", state="completed")
+    lode = make_lode(id="test-id", stage="refine", state="completed")
     server.lodes = [lode]
     save_lodes(server.lodes)
 
@@ -440,7 +440,7 @@ def test_server_handles_ready_state(socket_path, server, temp_config, make_lode)
         "type": "lode_set_state",
         "lode_id": "test-id",
         "state": "ready",
-        "status": "Shovel-ready prompt saved",
+        "status": "Ore output saved",
     }
     client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
@@ -449,7 +449,7 @@ def test_server_handles_ready_state(socket_path, server, temp_config, make_lode)
 
     assert response["type"] == "lode_state_changed"
     assert response["lode"]["state"] == "ready"
-    assert response["lode"]["status"] == "Shovel-ready prompt saved"
+    assert response["lode"]["status"] == "Ore output saved"
 
     client.close()
 
@@ -500,7 +500,7 @@ def test_server_disconnects_stale_client_on_reconnect(socket_path, server, temp_
 
 def test_server_handles_lode_set_codex_thread(socket_path, server, temp_config, make_lode):
     """Server handles lode_set_codex_thread message."""
-    lode = make_lode(id="test-id", stage="processing", state="running")
+    lode = make_lode(id="test-id", stage="refine", state="running")
     server.lodes = [lode]
     save_lodes(server.lodes)
 

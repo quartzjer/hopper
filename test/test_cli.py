@@ -8,10 +8,10 @@ from hopper import __version__
 from hopper.cli import (
     cmd_code,
     cmd_config,
-    cmd_ore,
     cmd_ping,
+    cmd_process,
+    cmd_processed,
     cmd_screenshot,
-    cmd_shovel,
     cmd_status,
     cmd_up,
     get_hopper_lid,
@@ -107,12 +107,12 @@ def test_up_help(capsys):
     assert "Start the hopper server and TUI" in captured.out
 
 
-def test_ore_help(capsys):
-    """ore --help shows help and returns 0."""
-    result = cmd_ore(["--help"])
+def test_process_help(capsys):
+    """process --help shows help and returns 0."""
+    result = cmd_process(["--help"])
     assert result == 0
     captured = capsys.readouterr()
-    assert "usage: hop ore" in captured.out
+    assert "usage: hop process" in captured.out
     assert "lode_id" in captured.out
 
 
@@ -146,13 +146,13 @@ def test_up_unknown_arg(capsys):
     assert "usage: hop up" in captured.out
 
 
-def test_ore_unknown_arg(capsys):
-    """ore rejects unknown arguments."""
-    result = cmd_ore(["session-123", "--unknown"])
+def test_process_unknown_arg(capsys):
+    """process rejects unknown arguments."""
+    result = cmd_process(["session-123", "--unknown"])
     assert result == 1
     captured = capsys.readouterr()
     assert "error: unrecognized arguments: --unknown" in captured.out
-    assert "usage: hop ore" in captured.out
+    assert "usage: hop process" in captured.out
 
 
 def test_status_unknown_arg(capsys):
@@ -164,20 +164,20 @@ def test_status_unknown_arg(capsys):
     assert "usage: hop status" in captured.out
 
 
-def test_ore_missing_lode_id(capsys):
-    """ore requires lode_id argument."""
-    result = cmd_ore([])
+def test_process_missing_lode_id(capsys):
+    """process requires lode_id argument."""
+    result = cmd_process([])
     assert result == 1
     captured = capsys.readouterr()
     assert "error:" in captured.out
     assert "lode_id" in captured.out
 
 
-def test_ore_delegates_to_runner(capsys):
-    """ore delegates to run_ore after server check."""
+def test_process_delegates_to_runner(capsys):
+    """process delegates to run_process after server check."""
     with patch("hopper.cli.require_server", return_value=None):
-        with patch("hopper.ore.run_ore", return_value=0) as mock_run:
-            result = cmd_ore(["test-1234-session"])
+        with patch("hopper.process.run_process", return_value=0) as mock_run:
+            result = cmd_process(["test-1234-session"])
     assert result == 0
     mock_run.assert_called_once()
 
@@ -730,87 +730,91 @@ def test_screenshot_success(capsys):
     assert captured.out == ansi_content
 
 
-# Tests for shovel command
+# Tests for processed command
 
 
-def test_shovel_help(capsys):
-    """shovel --help shows help and returns 0."""
-    result = cmd_shovel(["--help"])
+def test_processed_help(capsys):
+    """processed --help shows help and returns 0."""
+    result = cmd_processed(["--help"])
     assert result == 0
     captured = capsys.readouterr()
-    assert "usage: hop shovel" in captured.out
+    assert "usage: hop processed" in captured.out
 
 
-def test_shovel_no_server(capsys):
-    """shovel returns 1 when server not running."""
+def test_processed_no_server(capsys):
+    """processed returns 1 when server not running."""
     with patch("hopper.client.ping", return_value=False):
-        result = cmd_shovel([])
+        result = cmd_processed([])
     assert result == 1
     captured = capsys.readouterr()
     assert "Server not running" in captured.out
 
 
-def test_shovel_no_hopper_lid(capsys):
-    """shovel returns 1 when HOPPER_LID not set."""
+def test_processed_no_hopper_lid(capsys):
+    """processed returns 1 when HOPPER_LID not set."""
     env = os.environ.copy()
     env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.client.ping", return_value=True):
-            result = cmd_shovel([])
+            result = cmd_processed([])
     assert result == 1
     captured = capsys.readouterr()
     assert "HOPPER_LID not set" in captured.out
 
 
-def test_shovel_invalid_session(capsys):
-    """shovel returns 1 when session doesn't exist."""
+def test_processed_invalid_session(capsys):
+    """processed returns 1 when session doesn't exist."""
     with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.client.ping", return_value=True):
             with patch("hopper.client.lode_exists", return_value=False):
-                result = cmd_shovel([])
+                result = cmd_processed([])
     assert result == 1
     captured = capsys.readouterr()
     assert "bad-session" in captured.out
     assert "not found or archived" in captured.out
 
 
-def test_shovel_empty_stdin(capsys):
-    """shovel returns 1 on empty stdin."""
+def test_processed_empty_stdin(capsys):
+    """processed returns 1 on empty stdin."""
     from io import StringIO
 
+    lode_data = {"id": "test-session", "stage": "ore"}
     with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
             with patch("hopper.client.lode_exists", return_value=True):
-                with patch("sys.stdin", StringIO("")):
-                    result = cmd_shovel([])
+                with patch("hopper.client.get_lode", return_value=lode_data):
+                    with patch("sys.stdin", StringIO("")):
+                        result = cmd_processed([])
     assert result == 1
     captured = capsys.readouterr()
     assert "No input received" in captured.out
 
 
-def test_shovel_saves_file(temp_config, capsys):
-    """shovel saves prompt to session directory and updates state."""
+def test_processed_saves_file(temp_config, capsys):
+    """processed saves output to lode directory and updates state."""
     from io import StringIO
 
     lode_id = "test-session-1234"
-    session_dir = temp_config / "lodes" / lode_id
-    prompt_text = "# Shovel-ready prompt\n\nDo the thing.\n"
+    lode_dir = temp_config / "lodes" / lode_id
+    output_text = "# Ore output\n\nDo the thing.\n"
+    lode_data = {"id": lode_id, "stage": "ore"}
 
     with patch.dict(os.environ, {"HOPPER_LID": lode_id}):
         with patch("hopper.client.ping", return_value=True):
             with patch("hopper.client.lode_exists", return_value=True):
-                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
-                    with patch("sys.stdin", StringIO(prompt_text)):
-                        result = cmd_shovel([])
+                with patch("hopper.client.get_lode", return_value=lode_data):
+                    with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
+                        with patch("sys.stdin", StringIO(output_text)):
+                            result = cmd_processed([])
 
     assert result == 0
     captured = capsys.readouterr()
     assert "Saved to" in captured.out
 
-    # Verify file was written
-    shovel_path = session_dir / "shovel.md"
-    assert shovel_path.exists()
-    assert shovel_path.read_text() == prompt_text
+    # Verify file was written as <stage>.md
+    output_path = lode_dir / "ore.md"
+    assert output_path.exists()
+    assert output_path.read_text() == output_text
 
     # Verify state was updated: set_lode_state(socket_path, lode_id, state, status)
     mock_set.assert_called_once()
@@ -820,184 +824,49 @@ def test_shovel_saves_file(temp_config, capsys):
     assert "complete" in status.lower()
 
 
-# Tests for refined command
-
-
-def test_refined_help(capsys):
-    """refined --help shows help and returns 0."""
-    from hopper.cli import cmd_refined
-
-    result = cmd_refined(["--help"])
-    assert result == 0
-    captured = capsys.readouterr()
-    assert "usage: hop refined" in captured.out
-
-
-def test_refined_no_server(capsys):
-    """refined returns 1 when server not running."""
-    from hopper.cli import cmd_refined
-
-    with patch("hopper.client.ping", return_value=False):
-        result = cmd_refined([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "Server not running" in captured.out
-
-
-def test_refined_no_hopper_lid(capsys):
-    """refined returns 1 when HOPPER_LID not set."""
-    from hopper.cli import cmd_refined
-
-    env = os.environ.copy()
-    env.pop("HOPPER_LID", None)
-    with patch.dict(os.environ, env, clear=True):
-        with patch("hopper.client.ping", return_value=True):
-            result = cmd_refined([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "HOPPER_LID not set" in captured.out
-
-
-def test_refined_invalid_session(capsys):
-    """refined returns 1 when session doesn't exist."""
-    from hopper.cli import cmd_refined
-
-    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
-        with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.lode_exists", return_value=False):
-                result = cmd_refined([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "bad-session" in captured.out
-    assert "not found or archived" in captured.out
-
-
-def test_refined_success(capsys):
-    """refined sets state to completed and prints confirmation."""
-    from hopper.cli import cmd_refined
-
+def test_processed_no_stage(capsys):
+    """processed returns 1 when lode has no stage."""
+    lode_data = {"id": "test-session", "stage": ""}
     with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
             with patch("hopper.client.lode_exists", return_value=True):
-                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
-                    result = cmd_refined([])
+                with patch("hopper.client.get_lode", return_value=lode_data):
+                    result = cmd_processed([])
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "no stage" in captured.out
+
+
+def test_processed_refine_stage(temp_config, capsys):
+    """processed saves refine.md for refine stage."""
+    from io import StringIO
+
+    lode_id = "test-refine-1234"
+    lode_dir = temp_config / "lodes" / lode_id
+    output_text = "# Refine summary\n\nFeature implemented.\n"
+    lode_data = {"id": lode_id, "stage": "refine"}
+
+    with patch.dict(os.environ, {"HOPPER_LID": lode_id}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=lode_data):
+                    with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
+                        with patch("sys.stdin", StringIO(output_text)):
+                            result = cmd_processed([])
 
     assert result == 0
-    captured = capsys.readouterr()
-    assert "Refine complete" in captured.out
 
+    # Verify file was written as refine.md
+    output_path = lode_dir / "refine.md"
+    assert output_path.exists()
+    assert output_path.read_text() == output_text
+
+    # Verify state: "Refine complete"
     mock_set.assert_called_once()
     _, sid, state, status = mock_set.call_args[0]
-    assert sid == "test-session"
+    assert sid == lode_id
     assert state == "completed"
     assert "Refine complete" in status
-
-
-# Tests for ship command
-
-
-def test_ship_help(capsys):
-    """ship --help shows help and returns 0."""
-    from hopper.cli import cmd_ship
-
-    result = cmd_ship(["--help"])
-    assert result == 0
-    captured = capsys.readouterr()
-    assert "usage: hop ship" in captured.out
-
-
-def test_ship_no_server(capsys):
-    """ship returns 1 when server not running."""
-    from hopper.cli import cmd_ship
-
-    with patch("hopper.client.ping", return_value=False):
-        result = cmd_ship(["test-session"])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "Server not running" in captured.out
-
-
-def test_ship_missing_lode_id(capsys):
-    """ship requires lode_id argument."""
-    from hopper.cli import cmd_ship
-
-    result = cmd_ship([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "error:" in captured.out
-
-
-# Tests for shipped command
-
-
-def test_shipped_help(capsys):
-    """shipped --help shows help and returns 0."""
-    from hopper.cli import cmd_shipped
-
-    result = cmd_shipped(["--help"])
-    assert result == 0
-    captured = capsys.readouterr()
-    assert "usage: hop shipped" in captured.out
-
-
-def test_shipped_no_server(capsys):
-    """shipped returns 1 when server not running."""
-    from hopper.cli import cmd_shipped
-
-    with patch("hopper.client.ping", return_value=False):
-        result = cmd_shipped([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "Server not running" in captured.out
-
-
-def test_shipped_no_hopper_lid(capsys):
-    """shipped returns 1 when HOPPER_LID not set."""
-    from hopper.cli import cmd_shipped
-
-    env = os.environ.copy()
-    env.pop("HOPPER_LID", None)
-    with patch.dict(os.environ, env, clear=True):
-        with patch("hopper.client.ping", return_value=True):
-            result = cmd_shipped([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "HOPPER_LID not set" in captured.out
-
-
-def test_shipped_invalid_session(capsys):
-    """shipped returns 1 when session doesn't exist."""
-    from hopper.cli import cmd_shipped
-
-    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
-        with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.lode_exists", return_value=False):
-                result = cmd_shipped([])
-    assert result == 1
-    captured = capsys.readouterr()
-    assert "bad-session" in captured.out
-    assert "not found or archived" in captured.out
-
-
-def test_shipped_success(capsys):
-    """shipped sets state to completed and prints confirmation."""
-    from hopper.cli import cmd_shipped
-
-    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
-        with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.lode_exists", return_value=True):
-                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
-                    result = cmd_shipped([])
-
-    assert result == 0
-    captured = capsys.readouterr()
-    assert "Ship complete" in captured.out
-
-    mock_set.assert_called_once()
-    _, sid, state, status = mock_set.call_args[0]
-    assert sid == "test-session"
-    assert state == "completed"
-    assert "Ship complete" in status
 
 
 # Tests for code command

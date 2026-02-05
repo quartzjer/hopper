@@ -11,6 +11,10 @@ You are merging completed work back into the main branch. The feature branch has
 
 You are running in the original project repo (not the worktree). The worktree at `$worktree` contains the feature branch with all committed work.
 
+## Refine summary
+
+$input
+
 ---
 
 ## Process
@@ -56,5 +60,7 @@ Look for a Makefile, CI config, or test setup in the project. Run whatever valid
 When the merge is complete, validated, and main is clean:
 
 ```
-hop shipped
+hop processed <<'EOF'
+<summary of what was merged>
+EOF
 ```

@@ -1,4 +1,4 @@
-"""Base runner - shared logic for ore and refine runners."""
+"""Base runner - shared lifecycle logic for the process runner."""
 
 import logging
 import os
@@ -42,7 +42,7 @@ def extract_error_message(stderr_bytes: bytes) -> str | None:
 
 
 class BaseRunner:
-    """Base class for lode runners (ore, refine).
+    """Base class for lode runners.
 
     Provides the full run lifecycle: signal handling, server communication,
     subprocess management, activity monitoring, completion detection, and

@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def run_code(lode_id: str, socket_path: Path, stage_name: str, request: str) -> int:
-    """Run a stage prompt via Codex for a processing-stage lode.
+    """Run a stage prompt via Codex for a refine-stage lode.
 
     Resumes the lode's Codex thread so that context accumulates across
-    stages. Validates the prompt exists, lode is in processing stage,
+    stages. Validates the prompt exists, lode is in refine stage,
     cwd matches the lode worktree, and a Codex thread ID is present.
     Saves artifacts (<stage>.in.md, <stage>.out.md, <stage>.json) to the
     lode directory and prints the output to stdout.
@@ -43,9 +43,9 @@ def run_code(lode_id: str, socket_path: Path, stage_name: str, request: str) -> 
         print(f"Lode {lode_id} not found.")
         return 1
 
-    # Validate lode is in processing stage
-    if lode_data.get("stage") != "processing":
-        print(f"Lode {lode_id} is not in processing stage.")
+    # Validate lode is in refine stage
+    if lode_data.get("stage") != "refine":
+        print(f"Lode {lode_id} is not in refine stage.")
         return 1
 
     # Validate Codex thread ID exists

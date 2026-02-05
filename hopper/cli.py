@@ -191,12 +191,12 @@ def cmd_up(args: list[str]) -> int:
     return start_server_with_tui(_socket(), tmux_location=tmux_location)
 
 
-@command("ore", "Run Claude for a lode")
-def cmd_ore(args: list[str]) -> int:
-    """Run Claude for a lode, managing active/inactive state."""
-    from hopper.ore import run_ore
+@command("process", "Run Claude for a lode's current stage")
+def cmd_process(args: list[str]) -> int:
+    """Run Claude for a lode, dispatching to the correct stage runner."""
+    from hopper.process import run_process
 
-    parser = make_parser("ore", "Run Claude for a lode (internal command).")
+    parser = make_parser("process", "Run Claude for a lode's current stage (internal command).")
     parser.add_argument("lode_id", help="Lode ID to run")
     try:
         parsed = parse_args(parser, args)
@@ -210,51 +210,7 @@ def cmd_ore(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_ore(parsed.lode_id, _socket())
-
-
-@command("refine", "Run refine workflow for a lode")
-def cmd_refine(args: list[str]) -> int:
-    """Run Claude with refine prompt in a git worktree."""
-    from hopper.refine import run_refine
-
-    parser = make_parser("refine", "Run refine workflow for a processing-stage lode.")
-    parser.add_argument("lode_id", help="Lode ID to run")
-    try:
-        parsed = parse_args(parser, args)
-    except SystemExit:
-        return 0
-    except ArgumentError as e:
-        print(f"error: {e}")
-        parser.print_usage()
-        return 1
-
-    if err := require_server():
-        return err
-
-    return run_refine(parsed.lode_id, _socket())
-
-
-@command("ship", "Run ship workflow for a lode")
-def cmd_ship(args: list[str]) -> int:
-    """Run Claude to merge feature branch back to main."""
-    from hopper.ship import run_ship
-
-    parser = make_parser("ship", "Run ship workflow for a ship-stage lode.")
-    parser.add_argument("lode_id", help="Lode ID to run")
-    try:
-        parsed = parse_args(parser, args)
-    except SystemExit:
-        return 0
-    except ArgumentError as e:
-        print(f"error: {e}")
-        parser.print_usage()
-        return 1
-
-    if err := require_server():
-        return err
-
-    return run_ship(parsed.lode_id, _socket())
+    return run_process(parsed.lode_id, _socket())
 
 
 @command("status", "Show or update lode status")
@@ -473,16 +429,16 @@ def cmd_screenshot(args: list[str]) -> int:
     return 0
 
 
-@command("shovel", "Save a shovel-ready prompt for a lode")
-def cmd_shovel(args: list[str]) -> int:
-    """Read a shovel-ready prompt from stdin and save it to the lode directory."""
-    from hopper.client import set_lode_state
+@command("processed", "Signal stage completion with output")
+def cmd_processed(args: list[str]) -> int:
+    """Read stage output from stdin and signal stage completion."""
+    from hopper.client import get_lode, set_lode_state
     from hopper.lodes import get_lode_dir
 
     parser = make_parser(
-        "shovel",
-        "Read a shovel-ready prompt from stdin and save it to the lode directory. "
-        "Usage: hop shovel <<'EOF'\n<prompt>\nEOF",
+        "processed",
+        "Read stage output from stdin, save it, and signal completion. "
+        "Usage: hop processed <<'EOF'\n<output>\nEOF",
     )
     try:
         parse_args(parser, args)
@@ -504,95 +460,36 @@ def cmd_shovel(args: list[str]) -> int:
     if err := validate_hopper_lid():
         return err
 
-    # Read prompt from stdin
-    prompt = sys.stdin.read()
-    if not prompt.strip():
-        print("No input received. Pipe a shovel-ready prompt via stdin.")
+    # Get lode's current stage from server
+    lode = get_lode(_socket(), lode_id)
+    if not lode:
+        print(f"Lode {lode_id} not found.")
         return 1
 
-    # Write to lode directory
+    stage = lode.get("stage", "")
+    if not stage:
+        print(f"Lode {lode_id} has no stage.")
+        return 1
+
+    # Read output from stdin
+    output = sys.stdin.read()
+    if not output.strip():
+        print("No input received. Use: hop processed <<'EOF'\\n<output>\\nEOF")
+        return 1
+
+    # Write to lode directory as <stage>.md
     lode_dir = get_lode_dir(lode_id)
     lode_dir.mkdir(parents=True, exist_ok=True)
-    shovel_path = lode_dir / "shovel.md"
-    tmp_path = shovel_path.with_suffix(".md.tmp")
-    tmp_path.write_text(prompt)
-    os.replace(tmp_path, shovel_path)
+    output_path = lode_dir / f"{stage}.md"
+    tmp_path = output_path.with_suffix(".md.tmp")
+    tmp_path.write_text(output)
+    os.replace(tmp_path, output_path)
 
-    # Update lode status
-    set_lode_state(_socket(), lode_id, "completed", "Shovel complete")
+    # Signal completion
+    status = f"{stage.capitalize()} complete"
+    set_lode_state(_socket(), lode_id, "completed", status)
 
-    print(f"Saved to {shovel_path}")
-    return 0
-
-
-@command("refined", "Signal that refine workflow is complete")
-def cmd_refined(args: list[str]) -> int:
-    """Signal that the refine workflow is complete for this lode."""
-    from hopper.client import set_lode_state
-
-    parser = make_parser(
-        "refined",
-        "Signal that the refine workflow is complete. "
-        "Called by Claude from within a refine lode.",
-    )
-    try:
-        parse_args(parser, args)
-    except SystemExit:
-        return 0
-    except ArgumentError as e:
-        print(f"error: {e}")
-        parser.print_usage()
-        return 1
-
-    if err := require_server():
-        return err
-
-    lode_id = get_hopper_lid()
-    if not lode_id:
-        print("HOPPER_LID not set. Run this from within a hopper lode.")
-        return 1
-
-    if err := validate_hopper_lid():
-        return err
-
-    set_lode_state(_socket(), lode_id, "completed", "Refine complete")
-
-    print("Refine complete.")
-    return 0
-
-
-@command("shipped", "Signal that ship workflow is complete")
-def cmd_shipped(args: list[str]) -> int:
-    """Signal that the ship workflow is complete for this lode."""
-    from hopper.client import set_lode_state
-
-    parser = make_parser(
-        "shipped",
-        "Signal that the ship workflow is complete. " "Called by Claude from within a ship lode.",
-    )
-    try:
-        parse_args(parser, args)
-    except SystemExit:
-        return 0
-    except ArgumentError as e:
-        print(f"error: {e}")
-        parser.print_usage()
-        return 1
-
-    if err := require_server():
-        return err
-
-    lode_id = get_hopper_lid()
-    if not lode_id:
-        print("HOPPER_LID not set. Run this from within a hopper lode.")
-        return 1
-
-    if err := validate_hopper_lid():
-        return err
-
-    set_lode_state(_socket(), lode_id, "completed", "Ship complete")
-
-    print("Ship complete.")
+    print(f"Saved to {output_path}")
     return 0
 
 

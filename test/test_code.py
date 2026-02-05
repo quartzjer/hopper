@@ -20,7 +20,7 @@ THREAD_ID = "codex-thread-1234"
 
 
 def _mock_response(
-    stage="processing",
+    stage="refine",
     project="my-project",
     scope="build widget",
     codex_thread_id=THREAD_ID,
@@ -47,13 +47,13 @@ class TestRunCode:
         assert exit_code == 1
         assert "not found" in capsys.readouterr().out
 
-    def test_not_processing_stage(self, capsys):
-        """Returns 1 when session is not in processing stage."""
+    def test_not_refine_stage(self, capsys):
+        """Returns 1 when session is not in refine stage."""
         with patch("hopper.code.connect", return_value=_mock_response(stage="ore")):
             exit_code = run_code("test-1234", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
-        assert "not in processing stage" in capsys.readouterr().out
+        assert "not in refine stage" in capsys.readouterr().out
 
     def test_missing_codex_thread_id(self, capsys):
         """Returns 1 with helpful message when codex_thread_id is missing."""

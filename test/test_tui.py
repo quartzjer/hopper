@@ -8,7 +8,7 @@ from textual.app import App
 from hopper.projects import Project
 from hopper.tui import (
     STAGE_ORE,
-    STAGE_PROCESSING,
+    STAGE_REFINE,
     STATUS_ERROR,
     STATUS_NEW,
     STATUS_RUNNING,
@@ -86,11 +86,11 @@ def test_lode_to_row_inactive():
     assert row.active is False
 
 
-def test_lode_to_row_processing_stage():
-    """Processing session has gear stage indicator."""
-    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "new"}
+def test_lode_to_row_refine_stage():
+    """Refine session has gear stage indicator."""
+    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "new"}
     row = lode_to_row(session)
-    assert row.stage == STAGE_PROCESSING
+    assert row.stage == STAGE_REFINE
 
 
 def test_lode_to_row_completed():
@@ -102,14 +102,14 @@ def test_lode_to_row_completed():
 
 def test_lode_to_row_ready():
     """Ready session shows running indicator (active work)."""
-    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "ready"}
+    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "ready"}
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
 
 def test_lode_to_row_task_state():
     """Task-name state shows running indicator (active work)."""
-    session = {"id": "abcd1234", "stage": "processing", "created_at": 1000, "state": "audit"}
+    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "audit"}
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
@@ -172,10 +172,10 @@ def test_format_stage_text_ore():
     assert text.style == "bright_blue"
 
 
-def test_format_stage_text_processing():
-    """format_stage_text returns bright_yellow for processing."""
-    text = format_stage_text(STAGE_PROCESSING)
-    assert str(text) == STAGE_PROCESSING
+def test_format_stage_text_refine():
+    """format_stage_text returns bright_yellow for refine."""
+    text = format_stage_text(STAGE_REFINE)
+    assert str(text) == STAGE_REFINE
     assert text.style == "bright_yellow"
 
 
@@ -347,7 +347,7 @@ async def test_app_with_lodes():
     """App should display all sessions in unified table."""
     sessions = [
         {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
-        {"id": "bbbb2222", "stage": "processing", "created_at": 2000},
+        {"id": "bbbb2222", "stage": "refine", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -431,7 +431,7 @@ async def test_get_lode():
     """_get_lode should find session by ID."""
     sessions = [
         {"id": "aaaa1111", "stage": "ore", "created_at": 1000},
-        {"id": "bbbb2222", "stage": "processing", "created_at": 2000},
+        {"id": "bbbb2222", "stage": "refine", "created_at": 2000},
     ]
     server = MockServer(sessions)
     app = HopperApp(server=server)
@@ -1140,7 +1140,7 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True, stage="ore": spawned.append(
+        lambda sid, path, foreground=True: spawned.append(
             {"sid": sid, "path": path, "fg": foreground}
         ),
     )
@@ -1172,11 +1172,11 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
         assert spawned[0]["fg"] is False
 
 
-# Tests for ShovelReviewScreen
+# Tests for OreReviewScreen
 
 
-class ShovelReviewTestApp(App):
-    """Test app wrapper for ShovelReviewScreen."""
+class OreReviewTestApp(App):
+    """Test app wrapper for OreReviewScreen."""
 
     def __init__(self, initial_text: str = ""):
         super().__init__()
@@ -1184,40 +1184,40 @@ class ShovelReviewTestApp(App):
         self._initial_text = initial_text
 
     def on_mount(self) -> None:
-        from hopper.tui import ShovelReviewScreen
+        from hopper.tui import OreReviewScreen
 
         def capture_result(r):
             self.review_result = r
 
-        self.push_screen(ShovelReviewScreen(initial_text=self._initial_text), capture_result)
+        self.push_screen(OreReviewScreen(initial_text=self._initial_text), capture_result)
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_prefills_text():
-    """ShovelReviewScreen should show pre-filled text."""
+async def test_ore_review_prefills_text():
+    """OreReviewScreen should show pre-filled text."""
     from textual.widgets import TextArea
 
-    app = ShovelReviewTestApp(initial_text="Shovel-ready prompt content")
+    app = OreReviewTestApp(initial_text="Ore output content")
     async with app.run_test():
         ta = app.screen.query_one(TextArea)
-        assert ta.text == "Shovel-ready prompt content"
+        assert ta.text == "Ore output content"
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_cancel_escape():
+async def test_ore_review_cancel_escape():
     """Escape should dismiss the review screen with None."""
-    app = ShovelReviewTestApp(initial_text="Some text")
+    app = OreReviewTestApp(initial_text="Some text")
     async with app.run_test() as pilot:
         await pilot.press("escape")
         assert app.review_result is None
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_save():
+async def test_ore_review_save():
     """Save button should return ('save', text)."""
     from textual.widgets import TextArea
 
-    app = ShovelReviewTestApp(initial_text="Original prompt")
+    app = OreReviewTestApp(initial_text="Original prompt")
     async with app.run_test() as pilot:
         ta = app.screen.query_one(TextArea)
         ta.clear()
@@ -1231,11 +1231,11 @@ async def test_shovel_review_save():
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_process():
+async def test_ore_review_process():
     """Process button should return ('process', text)."""
     from textual.widgets import TextArea
 
-    app = ShovelReviewTestApp(initial_text="Process this prompt")
+    app = OreReviewTestApp(initial_text="Process this prompt")
     async with app.run_test() as pilot:
         ta = app.screen.query_one(TextArea)
         assert ta.text == "Process this prompt"
@@ -1247,9 +1247,9 @@ async def test_shovel_review_process():
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_empty_validation():
+async def test_ore_review_empty_validation():
     """Empty text should not submit."""
-    app = ShovelReviewTestApp(initial_text="")
+    app = OreReviewTestApp(initial_text="")
     async with app.run_test() as pilot:
         await pilot.press("tab")  # Cancel
         await pilot.press("tab")  # Process
@@ -1259,9 +1259,9 @@ async def test_shovel_review_empty_validation():
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_arrow_navigation():
+async def test_ore_review_arrow_navigation():
     """Arrow keys should navigate between buttons."""
-    app = ShovelReviewTestApp(initial_text="Text")
+    app = OreReviewTestApp(initial_text="Text")
     async with app.run_test() as pilot:
         await pilot.press("tab")
         assert app.screen.focused.id == "btn-cancel"
@@ -1274,80 +1274,80 @@ async def test_shovel_review_arrow_navigation():
 
 
 @pytest.mark.asyncio
-async def test_enter_on_processing_ready_opens_shovel_review(temp_config):
-    """Enter on a processing/ready session should open ShovelReviewScreen."""
+async def test_enter_on_refine_ready_opens_ore_review(temp_config):
+    """Enter on a refine/ready session should open OreReviewScreen."""
     from hopper.lodes import get_lode_dir
-    from hopper.tui import ShovelReviewScreen
+    from hopper.tui import OreReviewScreen
 
-    session = {"id": "aaaa1111", "stage": "processing", "state": "ready", "created_at": 1000}
-    # Write a shovel.md for this session
+    session = {"id": "aaaa1111", "stage": "refine", "state": "ready", "created_at": 1000}
+    # Write ore.md for this session
     session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "shovel.md").write_text("The shovel prompt")
+    (session_dir / "ore.md").write_text("The ore output")
 
     server = MockServer([session])
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
         await pilot.press("enter")
-        assert isinstance(app.screen, ShovelReviewScreen)
+        assert isinstance(app.screen, OreReviewScreen)
         from textual.widgets import TextArea
 
         ta = app.screen.query_one(TextArea)
-        assert ta.text == "The shovel prompt"
+        assert ta.text == "The ore output"
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_save_writes_file(temp_config):
-    """Save from review should write edited text back to shovel.md."""
+async def test_ore_review_save_writes_file(temp_config):
+    """Save from review should write edited text back to ore.md."""
     from textual.widgets import TextArea
 
     from hopper.lodes import get_lode_dir
-    from hopper.tui import ShovelReviewScreen
+    from hopper.tui import OreReviewScreen
 
-    session = {"id": "aaaa1111", "stage": "processing", "state": "ready", "created_at": 1000}
+    session = {"id": "aaaa1111", "stage": "refine", "state": "ready", "created_at": 1000}
     session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "shovel.md").write_text("Original shovel")
+    (session_dir / "ore.md").write_text("Original ore output")
 
     server = MockServer([session])
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
         await pilot.press("enter")
-        assert isinstance(app.screen, ShovelReviewScreen)
+        assert isinstance(app.screen, OreReviewScreen)
         ta = app.screen.query_one(TextArea)
         ta.clear()
-        ta.insert("Edited shovel")
+        ta.insert("Edited ore output")
         await pilot.press("tab")  # Cancel
         await pilot.press("tab")  # Process
         await pilot.press("tab")  # Save
         await pilot.press("enter")
-        assert (session_dir / "shovel.md").read_text() == "Edited shovel"
+        assert (session_dir / "ore.md").read_text() == "Edited ore output"
 
 
 @pytest.mark.asyncio
-async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
+async def test_ore_review_process_spawns_refine(monkeypatch, temp_config):
     """Process from review should write file and spawn refine in background."""
     from textual.widgets import TextArea
 
     from hopper.lodes import get_lode_dir
-    from hopper.tui import ShovelReviewScreen
+    from hopper.tui import OreReviewScreen
 
     session = {
         "id": "aaaa1111",
-        "stage": "processing",
+        "stage": "refine",
         "state": "ready",
         "created_at": 1000,
         "project": "testproj",
     }
     session_dir = get_lode_dir(session["id"])
     session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "shovel.md").write_text("Shovel content")
+    (session_dir / "ore.md").write_text("Ore output content")
 
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True, stage="ore": spawned.append(
-            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        lambda sid, path, foreground=True: spawned.append(
+            {"sid": sid, "path": path, "fg": foreground}
         ),
     )
     monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
@@ -1356,9 +1356,9 @@ async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
         await pilot.press("enter")
-        assert isinstance(app.screen, ShovelReviewScreen)
+        assert isinstance(app.screen, OreReviewScreen)
         ta = app.screen.query_one(TextArea)
-        assert ta.text == "Shovel content"
+        assert ta.text == "Ore output content"
         ta.clear()
         ta.insert("Edited for processing")
         # Tab to Process button
@@ -1367,24 +1367,21 @@ async def test_shovel_review_process_spawns_refine(monkeypatch, temp_config):
         await pilot.press("enter")
 
         # File should be updated
-        assert (session_dir / "shovel.md").read_text() == "Edited for processing"
+        assert (session_dir / "ore.md").read_text() == "Edited for processing"
         # Should have spawned refine in background
         assert len(spawned) == 1
         assert spawned[0]["sid"] == session["id"]
         assert spawned[0]["fg"] is False
-        assert spawned[0]["stage"] == "processing"
 
 
 @pytest.mark.asyncio
-async def test_enter_on_non_ready_processing_spawns_directly(monkeypatch, temp_config):
-    """Enter on a processing session that is NOT ready should spawn directly."""
-    session = {"id": "aaaa1111", "stage": "processing", "state": "running", "created_at": 1000}
+async def test_enter_on_non_ready_refine_spawns_directly(monkeypatch, temp_config):
+    """Enter on a refine session that is NOT ready should spawn directly."""
+    session = {"id": "aaaa1111", "stage": "refine", "state": "running", "created_at": 1000}
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True, stage="ore": spawned.append(
-            {"sid": sid, "stage": stage}
-        ),
+        lambda sid, path, foreground=True: spawned.append({"sid": sid}),
     )
     monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
 
@@ -1395,7 +1392,7 @@ async def test_enter_on_non_ready_processing_spawns_directly(monkeypatch, temp_c
         # Should spawn directly, not open modal
         assert not isinstance(app.screen, type(None))
         assert len(spawned) == 1
-        assert spawned[0]["stage"] == "processing"
+        assert spawned[0]["sid"] == session["id"]
 
 
 # Tests for LegendScreen
@@ -1436,7 +1433,7 @@ async def test_legend_contains_all_symbols():
         assert STATUS_ERROR in text
         assert STATUS_NEW in text
         assert STAGE_ORE in text
-        assert STAGE_PROCESSING in text
+        assert STAGE_REFINE in text
         assert "▸" in text
         assert "▹" in text
 
@@ -1584,8 +1581,8 @@ async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True, stage="ore": spawned.append(
-            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        lambda sid, path, foreground=True: spawned.append(
+            {"sid": sid, "path": path, "fg": foreground}
         ),
     )
     monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
@@ -1603,7 +1600,6 @@ async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
             assert len(spawned) == 1
             assert spawned[0]["sid"] == session["id"]
             assert spawned[0]["fg"] is False
-            assert spawned[0]["stage"] == "ship"
 
 
 @pytest.mark.asyncio
@@ -1626,8 +1622,8 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
     spawned = []
     monkeypatch.setattr(
         "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True, stage="ore": spawned.append(
-            {"sid": sid, "path": path, "fg": foreground, "stage": stage}
+        lambda sid, path, foreground=True: spawned.append(
+            {"sid": sid, "path": path, "fg": foreground}
         ),
     )
     monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
@@ -1642,13 +1638,12 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
             await pilot.press("left")  # Ship -> Refine
             await pilot.press("enter")
 
-            # Lode stage should be changed back to processing
-            assert session["stage"] == "processing"
+            # Lode stage should be changed back to refine
+            assert session["stage"] == "refine"
             assert session["state"] == "running"
             assert session["status"] == "Resuming refine"
 
-            # Should have spawned refine in background
+            # Should have spawned in background
             assert len(spawned) == 1
             assert spawned[0]["sid"] == session["id"]
             assert spawned[0]["fg"] is False
-            assert spawned[0]["stage"] == "processing"

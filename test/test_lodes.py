@@ -52,7 +52,7 @@ def test_lode_dict_includes_codex_thread_id():
     """Lode dict includes codex_thread_id field."""
     lode = {
         "id": "abc12345",
-        "stage": "processing",
+        "stage": "refine",
         "created_at": 1000,
         "codex_thread_id": "codex-uuid-1234",
     }
@@ -63,7 +63,7 @@ def test_lode_codex_thread_id_roundtrip():
     """codex_thread_id survives json roundtrip."""
     lode = {
         "id": "abc12345",
-        "stage": "processing",
+        "stage": "refine",
         "created_at": 1000,
         "updated_at": 1000,
         "state": "running",
@@ -85,7 +85,7 @@ def test_save_and_load_lodes(temp_config):
         {"id": "id111111", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"},
         {
             "id": "id222222",
-            "stage": "processing",
+            "stage": "refine",
             "created_at": 2000,
             "updated_at": 2000,
             "state": "new",
@@ -98,7 +98,7 @@ def test_save_and_load_lodes(temp_config):
     assert loaded[0]["id"] == "id111111"
     assert loaded[0]["stage"] == "ore"
     assert loaded[1]["id"] == "id222222"
-    assert loaded[1]["stage"] == "processing"
+    assert loaded[1]["stage"] == "refine"
 
 
 def test_create_lode(temp_config):
@@ -157,21 +157,21 @@ def test_update_lode_stage(temp_config):
     ]
     save_lodes(lodes_list)
 
-    updated = update_lode_stage(lodes_list, "testid11", "processing")
+    updated = update_lode_stage(lodes_list, "testid11", "refine")
 
     assert updated is not None
-    assert updated["stage"] == "processing"
-    assert lodes_list[0]["stage"] == "processing"
+    assert updated["stage"] == "refine"
+    assert lodes_list[0]["stage"] == "refine"
 
     # Verify persisted
     loaded = load_lodes()
-    assert loaded[0]["stage"] == "processing"
+    assert loaded[0]["stage"] == "refine"
 
 
 def test_update_lode_stage_not_found(temp_config):
     """Test updating non-existent lode."""
     lodes_list = []
-    result = update_lode_stage(lodes_list, "nonexistent", "processing")
+    result = update_lode_stage(lodes_list, "nonexistent", "refine")
     assert result is None
 
 
@@ -181,7 +181,7 @@ def test_archive_lode(temp_config):
         {"id": "keepid11", "stage": "ore", "created_at": 1000, "updated_at": 1000, "state": "new"},
         {
             "id": "archivid",
-            "stage": "processing",
+            "stage": "refine",
             "created_at": 2000,
             "updated_at": 2000,
             "state": "new",
@@ -351,7 +351,7 @@ def test_update_lode_stage_touches(temp_config):
     ]
     save_lodes(lodes_list)
 
-    updated = update_lode_stage(lodes_list, "testid11", "processing")
+    updated = update_lode_stage(lodes_list, "testid11", "refine")
 
     assert updated is not None
     assert updated["updated_at"] > 1000

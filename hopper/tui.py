@@ -63,7 +63,7 @@ HINT_BACKLOG = "_hint_backlog"
 
 # Stage indicators
 STAGE_ORE = "⚒"  # hammer and pick
-STAGE_PROCESSING = "⛭"  # gear
+STAGE_REFINE = "⛭"  # gear
 STAGE_SHIP = "▲"  # triangle up
 
 # Status -> color mapping (shared by icon and text formatting)
@@ -80,7 +80,7 @@ class Row:
     """A row in a table."""
 
     id: str
-    stage: str  # STAGE_ORE, STAGE_PROCESSING, or STAGE_SHIP
+    stage: str  # STAGE_ORE, STAGE_REFINE, or STAGE_SHIP
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
     active: bool = False  # Whether a runner is connected
@@ -103,10 +103,12 @@ def lode_to_row(lode: dict) -> Row:
     lode_stage = lode.get("stage", "ore")
     if lode_stage == "ore":
         stage = STAGE_ORE
+    elif lode_stage == "refine":
+        stage = STAGE_REFINE
     elif lode_stage == "ship":
         stage = STAGE_SHIP
     else:
-        stage = STAGE_PROCESSING
+        stage = STAGE_ORE
 
     return Row(
         id=lode["id"],
@@ -149,7 +151,7 @@ def format_stage_text(stage: str) -> Text:
         return Text(stage, style="bright_blue")
     elif stage == STAGE_SHIP:
         return Text(stage, style="bright_green")
-    else:  # STAGE_PROCESSING
+    else:  # STAGE_REFINE
         return Text(stage, style="bright_yellow")
 
 
@@ -374,10 +376,10 @@ class BacklogEditScreen(TextInputScreen):
         self.dismiss((action, text))
 
 
-class ShovelReviewScreen(TextInputScreen):
-    """Modal screen for reviewing/editing the shovel-ready prompt before processing."""
+class OreReviewScreen(TextInputScreen):
+    """Modal screen for reviewing/editing the ore output before refine."""
 
-    MODAL_TITLE = "Review Shovel Prompt"
+    MODAL_TITLE = "Review Ore Output"
 
     def compose_buttons(self) -> ComposeResult:
         yield Button("Cancel", id="btn-cancel", variant="default")
@@ -567,8 +569,8 @@ class LegendScreen(ModalScreen):
         t.append("Stage\n", style="bold")
         t.append(f"  {STAGE_ORE}", style="bright_blue")
         t.append("  ore\n", style="bright_black")
-        t.append(f"  {STAGE_PROCESSING}", style="bright_yellow")
-        t.append("  processing\n", style="bright_black")
+        t.append(f"  {STAGE_REFINE}", style="bright_yellow")
+        t.append("  refine\n", style="bright_black")
         t.append(f"  {STAGE_SHIP}", style="bright_green")
         t.append("  ship\n", style="bright_black")
 
@@ -804,8 +806,8 @@ class HopperApp(App):
         """
         table = self.query_one("#lode-table", LodeTable)
 
-        # Build rows from lodes (ore first, then processing, then ship)
-        stage_order = {"ore": 0, "processing": 1, "ship": 2}
+        # Build rows from lodes (ore first, then refine, then ship)
+        stage_order = {"ore": 0, "refine": 1, "ship": 2}
         rows = [
             lode_to_row(s)
             for s in sorted(self._lodes, key=lambda s: stage_order.get(s.get("stage", ""), 3))
@@ -1020,15 +1022,15 @@ class HopperApp(App):
             # Lode has a connected runner - switch to its window
             if not switch_to_pane(lode["tmux_pane"]):
                 self.notify("Failed to switch to window", severity="error")
-        elif lode.get("stage") == "processing" and lode.get("state") == "ready":
-            # Shovel complete, ready for processing - review before starting
-            self._review_shovel(lode, project_path)
+        elif lode.get("stage") == "refine" and lode.get("state") == "ready":
+            # Ore complete, ready for refine - review before starting
+            self._review_ore_output(lode, project_path)
         elif lode.get("stage") == "ship" and lode.get("state") == "ready":
             # Refine complete, ready to ship - review changes before shipping
             self._review_ship(lode, project_path)
         else:
             # Lode is not active - spawn runner based on stage
-            if not spawn_claude(lode["id"], project_path, stage=lode.get("stage", "ore")):
+            if not spawn_claude(lode["id"], project_path):
                 self.notify("Failed to spawn tmux window", severity="error")
 
         self.refresh_table()
@@ -1075,28 +1077,28 @@ class HopperApp(App):
 
         self.push_screen(BacklogEditScreen(initial_text=item.description), on_edit_result)
 
-    def _review_shovel(self, lode: dict, project_path: str | None) -> None:
-        """Open the shovel review modal for a processing-ready lode."""
-        shovel_path = get_lode_dir(lode["id"]) / "shovel.md"
-        if not shovel_path.exists():
-            self.notify("Shovel prompt not found", severity="error")
+    def _review_ore_output(self, lode: dict, project_path: str | None) -> None:
+        """Open the ore output review modal for a refine-ready lode."""
+        ore_path = get_lode_dir(lode["id"]) / "ore.md"
+        if not ore_path.exists():
+            self.notify("Ore output not found", severity="error")
             return
 
-        shovel_text = shovel_path.read_text()
+        ore_text = ore_path.read_text()
 
         def on_review_result(result: tuple[str, str] | None) -> None:
             if result is None:
                 return  # Cancelled
             action, text = result
-            # Write edited text back to shovel.md
-            tmp_path = shovel_path.with_suffix(".md.tmp")
+            # Write edited text back to ore.md
+            tmp_path = ore_path.with_suffix(".md.tmp")
             tmp_path.write_text(text)
-            os.replace(tmp_path, shovel_path)
+            os.replace(tmp_path, ore_path)
             if action == "process":
-                spawn_claude(lode["id"], project_path, foreground=False, stage="processing")
+                spawn_claude(lode["id"], project_path, foreground=False)
             self.refresh_table()
 
-        self.push_screen(ShovelReviewScreen(initial_text=shovel_text), on_review_result)
+        self.push_screen(OreReviewScreen(initial_text=ore_text), on_review_result)
 
     def _review_ship(self, lode: dict, project_path: str | None) -> None:
         """Open the ship review modal for a ship-ready lode."""
@@ -1111,12 +1113,12 @@ class HopperApp(App):
             if result is None:
                 return  # Cancelled
             if result == "ship":
-                spawn_claude(lode["id"], project_path, foreground=False, stage="ship")
+                spawn_claude(lode["id"], project_path, foreground=False)
             elif result == "refine":
-                # Change stage back to processing and resume refine
-                update_lode_stage(self._lodes, lode["id"], "processing")
+                # Change stage back to refine and resume
+                update_lode_stage(self._lodes, lode["id"], "refine")
                 update_lode_state(self._lodes, lode["id"], "running", "Resuming refine")
-                spawn_claude(lode["id"], project_path, foreground=False, stage="processing")
+                spawn_claude(lode["id"], project_path, foreground=False)
             self.refresh_table()
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)

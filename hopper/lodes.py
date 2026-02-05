@@ -2,7 +2,7 @@
 
 Lodes are plain dicts with these fields:
 - id: str - 8-character base32 ID
-- stage: str - "ore", "processing", or "ship"
+- stage: str - "ore", "refine", or "ship"
 - created_at: int - milliseconds since epoch
 - project: str - project name (default "")
 - scope: str - user's task scope description (default "")
