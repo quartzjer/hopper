@@ -10,6 +10,8 @@ from textual.app import App
 
 from hopper.projects import Project
 from hopper.tui import (
+    AUTO_OFF,
+    AUTO_ON,
     STAGE_MILL,
     STAGE_REFINE,
     STATUS_ERROR,
@@ -23,6 +25,7 @@ from hopper.tui import (
     Row,
     ScopeInputScreen,
     format_active_text,
+    format_auto_text,
     format_stage_text,
     format_status_label,
     format_status_text,
@@ -87,6 +90,13 @@ def test_lode_to_row_inactive():
     session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "new"}
     row = lode_to_row(session)
     assert row.active is False
+
+
+def test_lode_to_row_auto():
+    """Auto field is passed through to Row."""
+    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "auto": True}
+    row = lode_to_row(session)
+    assert row.auto is True
 
 
 def test_lode_to_row_refine_stage():
@@ -162,6 +172,20 @@ def test_format_active_text_inactive():
     """format_active_text returns bright_black for inactive."""
     text = format_active_text(False)
     assert str(text) == "▹"
+    assert text.style == "bright_black"
+
+
+def test_format_auto_text_on():
+    """Auto on shows bright green indicator."""
+    text = format_auto_text(True)
+    assert str(text) == AUTO_ON
+    assert text.style == "bright_green"
+
+
+def test_format_auto_text_off():
+    """Auto off shows dim indicator."""
+    text = format_auto_text(False)
+    assert str(text) == AUTO_OFF
     assert text.style == "bright_black"
 
 
@@ -258,6 +282,7 @@ def test_row_dataclass():
         stage=STAGE_MILL,
         age="1m",
         status=STATUS_RUNNING,
+        auto=True,
         project="proj",
         status_text="Working on it",
     )
@@ -265,6 +290,7 @@ def test_row_dataclass():
     assert row.stage == STAGE_MILL
     assert row.age == "1m"
     assert row.status == STATUS_RUNNING
+    assert row.auto is True
     assert row.project == "proj"
     assert row.status_text == "Working on it"
 
@@ -286,6 +312,11 @@ class MockServer:
         self.backlog = backlog if backlog is not None else []
         self.git_hash = git_hash
         self.started_at = started_at
+        self.broadcasts: list[dict] = []
+
+    def broadcast(self, message: dict) -> bool:
+        self.broadcasts.append(message)
+        return True
 
 
 @pytest.mark.asyncio
@@ -358,6 +389,47 @@ async def test_app_with_lodes():
         table = app.query_one("#lode-table")
         # 2 sessions + 1 hint row
         assert table.row_count == 3
+
+
+@pytest.mark.asyncio
+async def test_app_lode_table_has_auto_column():
+    """Lode table includes the auto column."""
+    from hopper.tui import LodeTable
+
+    server = MockServer([])
+    app = HopperApp(server=server)
+    async with app.run_test():
+        table = app.query_one("#lode-table", LodeTable)
+        assert LodeTable.COL_AUTO in table.columns
+
+
+@pytest.mark.asyncio
+async def test_toggle_auto_with_a(temp_config):
+    """a toggles auto on selected lode."""
+    sessions = [{"id": "aaaa1111", "stage": "mill", "created_at": 1000, "auto": False}]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        await pilot.press("a")
+        assert sessions[0]["auto"] is True
+        assert server.broadcasts[-1]["type"] == "lode_updated"
+        assert server.broadcasts[-1]["lode"]["auto"] is True
+
+
+@pytest.mark.asyncio
+async def test_archive_with_x(temp_config):
+    """x archives selected lode."""
+    sessions = [
+        {"id": "aaaa1111", "stage": "mill", "created_at": 1000},
+        {"id": "bbbb2222", "stage": "mill", "created_at": 2000},
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test() as pilot:
+        table = app.query_one("#lode-table")
+        assert table.row_count == 3  # 2 lodes + hint
+        await pilot.press("x")
+        assert table.row_count == 2  # 1 lode + hint
 
 
 @pytest.mark.asyncio
@@ -1437,6 +1509,8 @@ async def test_legend_contains_all_symbols():
         assert STATUS_NEW in text
         assert STAGE_MILL in text
         assert STAGE_REFINE in text
+        assert AUTO_ON in text
+        assert AUTO_OFF in text
         assert "▸" in text
         assert "▹" in text
 

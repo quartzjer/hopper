@@ -68,6 +68,8 @@ HINT_BACKLOG = "_hint_backlog"
 STAGE_MILL = "⚒"  # hammer and pick
 STAGE_REFINE = "⛭"  # gear
 STAGE_SHIP = "▲"  # triangle up
+AUTO_ON = "↻"
+AUTO_OFF = "·"
 
 # Status -> color mapping (shared by icon and text formatting)
 STATUS_COLORS = {
@@ -87,6 +89,7 @@ class Row:
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
     active: bool = False  # Whether a runner is connected
+    auto: bool = False  # Whether auto-advance is enabled
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
 
@@ -119,6 +122,7 @@ def lode_to_row(lode: dict) -> Row:
         age=format_age(lode["created_at"]),
         status=status,
         active=lode.get("active", False),
+        auto=lode.get("auto", False),
         project=lode.get("project", ""),
         status_text=lode.get("status", ""),
     )
@@ -146,6 +150,13 @@ def format_active_text(active: bool) -> Text:
         return Text("▸", style="bright_cyan")
     else:
         return Text("▹", style="bright_black")
+
+
+def format_auto_text(auto: bool) -> Text:
+    """Format an auto-advance indicator with color using Rich Text."""
+    if auto:
+        return Text(AUTO_ON, style="bright_green")
+    return Text(AUTO_OFF, style="bright_black")
 
 
 def format_stage_text(stage: str) -> Text:
@@ -579,6 +590,14 @@ class LegendScreen(ModalScreen):
 
         t.append("\n")
 
+        t.append("Auto\n", style="bold")
+        t.append(f"  {AUTO_ON}", style="bright_green")
+        t.append("  auto-advance on\n", style="bright_black")
+        t.append(f"  {AUTO_OFF}", style="bright_black")
+        t.append("  auto-advance off\n", style="bright_black")
+
+        t.append("\n")
+
         t.append("Connection\n", style="bold")
         t.append("  ▸", style="bright_cyan")
         t.append("  connected\n", style="bright_black")
@@ -603,6 +622,7 @@ class LodeTable(DataTable):
     # Column keys for update_cell operations
     COL_STATUS = "status"
     COL_ACTIVE = "active"
+    COL_AUTO = "auto"
     COL_STAGE = "stage"
     COL_ID = "id"
     COL_PROJECT = "project"
@@ -617,6 +637,7 @@ class LodeTable(DataTable):
         """Set up columns when mounted with explicit keys."""
         self.add_column("", key=self.COL_STATUS)
         self.add_column("", key=self.COL_ACTIVE)
+        self.add_column(AUTO_ON, key=self.COL_AUTO, width=3)
         self.add_column("s", key=self.COL_STAGE)
         self.add_column("id", key=self.COL_ID)
         self.add_column("project", key=self.COL_PROJECT)
@@ -746,7 +767,8 @@ class HopperApp(App):
         Binding("ctrl+d", "quit", "Quit", show=False, priority=True),
         Binding("c", "new_lode", "Create"),
         Binding("b", "new_backlog", "Backlog"),
-        Binding("a", "archive", "Archive"),
+        Binding("a", "toggle_auto", "Auto"),
+        Binding("x", "archive", "Archive"),
         Binding("d", "delete_backlog", "Delete", show=False),
         Binding("l", "legend", "Legend"),
     ]
@@ -839,6 +861,7 @@ class HopperApp(App):
                 # Update existing row cells
                 table.update_cell(row.id, LodeTable.COL_STATUS, format_status_text(row.status))
                 table.update_cell(row.id, LodeTable.COL_ACTIVE, format_active_text(row.active))
+                table.update_cell(row.id, LodeTable.COL_AUTO, format_auto_text(row.auto))
                 table.update_cell(row.id, LodeTable.COL_STAGE, format_stage_text(row.stage))
                 table.update_cell(row.id, LodeTable.COL_ID, row.id)
                 table.update_cell(row.id, LodeTable.COL_PROJECT, row.project)
@@ -856,6 +879,7 @@ class HopperApp(App):
                 table.add_row(
                     format_status_text(row.status),
                     format_active_text(row.active),
+                    format_auto_text(row.auto),
                     format_stage_text(row.stage),
                     row.id,
                     row.project,
@@ -867,7 +891,7 @@ class HopperApp(App):
         # Add hint row at the bottom if not already there
         if not has_hint:
             hint = Text("c to create new lode", style="bright_black italic")
-            table.add_row("", "", "", "", "", "", hint, key=HINT_LODE)
+            table.add_row("", "", "", "", "", "", "", hint, key=HINT_LODE)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""
@@ -1054,6 +1078,29 @@ class HopperApp(App):
             return
 
         archive_lode(self._lodes, lode_id)
+        self.refresh_table()
+
+    def action_toggle_auto(self) -> None:
+        """Toggle auto-advance on the selected lode."""
+        if not isinstance(self.focused, LodeTable):
+            return
+
+        lode_id = self._get_selected_lode_id()
+        if not lode_id:
+            return
+
+        lode = self._get_lode(lode_id)
+        if not lode:
+            return
+
+        lode["auto"] = not lode.get("auto", False)
+        if self.server:
+            from hopper.lodes import touch
+
+            touch(lode)
+            save_lodes(self.server.lodes)
+            self.server.broadcast({"type": "lode_updated", "lode": lode})
+
         self.refresh_table()
 
     def action_legend(self) -> None:

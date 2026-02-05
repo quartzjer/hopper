@@ -23,6 +23,7 @@ from hopper.backlog import (
 from hopper.backlog import (
     find_by_prefix as find_backlog_by_prefix,
 )
+from hopper.claude import spawn_claude
 from hopper.lodes import (
     archive_lode,
     create_lode,
@@ -34,6 +35,8 @@ from hopper.lodes import (
     update_lode_state,
     update_lode_status,
 )
+from hopper.process import STAGES
+from hopper.projects import find_project
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +197,21 @@ class Server:
         logger.debug(f"Lode {lode_id} disconnected, active=False")
         self.broadcast({"type": "lode_updated", "lode": lode})
 
+        stage = lode.get("stage", "")
+        if (
+            lode.get("auto")
+            and lode.get("state") == "ready"
+            and stage in STAGES
+            and lode.get("status") != STAGES[stage]["done_status"]
+        ):
+            project = find_project(lode.get("project", ""))
+            project_path = project.path if project else None
+            if project_path:
+                logger.info(f"Auto-advancing lode {lode_id} to {stage}")
+                spawn_claude(lode_id, project_path, foreground=False)
+            else:
+                logger.warning(f"Auto-advance skipped for {lode_id}: project not found")
+
     def _register_lode_client(
         self, lode_id: str, conn: socket.socket, tmux_pane: str | None = None
     ) -> None:
@@ -300,6 +318,17 @@ class Server:
                 lode = update_lode_status(self.lodes, lode_id, status)
                 if lode:
                     self.broadcast({"type": "lode_status_changed", "lode": lode})
+
+        elif msg_type == "lode_set_auto":
+            lode_id = message.get("lode_id")
+            auto = bool(message.get("auto", False))
+            if lode_id:
+                lode = self._find_lode(lode_id)
+                if lode:
+                    lode["auto"] = auto
+                    touch(lode)
+                    save_lodes(self.lodes)
+                    self.broadcast({"type": "lode_updated", "lode": lode})
 
         elif msg_type == "lode_set_codex_thread":
             lode_id = message.get("lode_id")
