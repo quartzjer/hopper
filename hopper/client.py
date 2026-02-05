@@ -159,7 +159,7 @@ class HopperConnection:
         Returns immediately after queueing. Requires start() to be called first.
 
         Args:
-            msg_type: Message type (e.g., "session_set_state")
+            msg_type: Message type (e.g., "lode_set_state")
             **fields: Additional message fields
 
         Returns:
@@ -233,27 +233,27 @@ def send_message(
         return None
 
 
-def connect(socket_path: Path, session_id: str | None = None, timeout: float = 2.0) -> dict | None:
+def connect(socket_path: Path, lode_id: str | None = None, timeout: float = 2.0) -> dict | None:
     """Connect to the server and get status information.
 
     This is the primary handshake for all client commands. It returns server
-    status including tmux location, and optionally validates/retrieves a session.
+    status including tmux location, and optionally validates/retrieves a lode.
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: Optional session ID to look up
+        lode_id: Optional lode ID to look up
         timeout: Timeout in seconds
 
     Returns:
         Connected response dict with keys:
         - tmux: {"session": str, "window": str} or None
-        - session: Session dict if session_id provided and found, else None
-        - session_found: bool if session_id was provided
+        - lode: Lode dict if lode_id provided and found, else None
+        - lode_found: bool if lode_id was provided
         Returns None if server is unreachable.
     """
     message: dict = {"type": "connect", "ts": int(time.time() * 1000)}
-    if session_id:
-        message["session_id"] = session_id
+    if lode_id:
+        message["lode_id"] = lode_id
     response = send_message(socket_path, message, timeout=timeout, wait_for_response=True)
     if response is None or response.get("type") != "connected":
         return None
@@ -273,51 +273,51 @@ def ping(socket_path: Path, timeout: float = 2.0) -> bool:
     return connect(socket_path, timeout=timeout) is not None
 
 
-def session_exists(socket_path: Path, session_id: str, timeout: float = 2.0) -> bool:
-    """Check if a session exists in the active sessions list.
+def lode_exists(socket_path: Path, lode_id: str, timeout: float = 2.0) -> bool:
+    """Check if a lode exists in the active lodes list.
 
     Note: This checks existence only, not whether a client is connected.
-    Use get_session() and check the 'active' field for connection status.
+    Use get_lode() and check the 'active' field for connection status.
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: The session ID to check
+        lode_id: The lode ID to check
         timeout: Timeout in seconds
 
     Returns:
-        True if session exists in the sessions list, False otherwise
+        True if lode exists in the lodes list, False otherwise
     """
-    response = connect(socket_path, session_id=session_id, timeout=timeout)
+    response = connect(socket_path, lode_id=lode_id, timeout=timeout)
     if response is None:
         return False
-    return response.get("session_found", False)
+    return response.get("lode_found", False)
 
 
-def get_session(socket_path: Path, session_id: str, timeout: float = 2.0) -> dict | None:
-    """Get a session's full data.
+def get_lode(socket_path: Path, lode_id: str, timeout: float = 2.0) -> dict | None:
+    """Get a lode's full data.
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: The session ID to query
+        lode_id: The lode ID to query
         timeout: Timeout in seconds
 
     Returns:
-        The full session dict or None if not found
+        The full lode dict or None if not found
     """
-    response = connect(socket_path, session_id=session_id, timeout=timeout)
+    response = connect(socket_path, lode_id=lode_id, timeout=timeout)
     if response is None:
         return None
-    return response.get("session")
+    return response.get("lode")
 
 
-def set_session_state(
-    socket_path: Path, session_id: str, state: str, status: str, timeout: float = 2.0
+def set_lode_state(
+    socket_path: Path, lode_id: str, state: str, status: str, timeout: float = 2.0
 ) -> bool:
-    """Set a session's state and status (fire-and-forget).
+    """Set a lode's state and status (fire-and-forget).
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: The session ID to update
+        lode_id: The lode ID to update
         state: New state (freeform string, e.g. "new", "running", "error", task names, etc.)
         status: Human-readable status text
         timeout: Connection timeout in seconds
@@ -326,8 +326,8 @@ def set_session_state(
         True if message was sent successfully, False otherwise
     """
     msg = {
-        "type": "session_set_state",
-        "session_id": session_id,
+        "type": "lode_set_state",
+        "lode_id": lode_id,
         "state": state,
         "status": status,
         "ts": int(time.time() * 1000),
@@ -340,14 +340,12 @@ def set_session_state(
         return False
 
 
-def set_session_status(
-    socket_path: Path, session_id: str, status: str, timeout: float = 2.0
-) -> bool:
-    """Set a session's status text only (fire-and-forget).
+def set_lode_status(socket_path: Path, lode_id: str, status: str, timeout: float = 2.0) -> bool:
+    """Set a lode's status text only (fire-and-forget).
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: The session ID to update
+        lode_id: The lode ID to update
         status: Human-readable status text
         timeout: Connection timeout in seconds
 
@@ -355,8 +353,8 @@ def set_session_status(
         True if message was sent successfully, False otherwise
     """
     msg = {
-        "type": "session_set_status",
-        "session_id": session_id,
+        "type": "lode_set_status",
+        "lode_id": lode_id,
         "status": status,
         "ts": int(time.time() * 1000),
     }
@@ -369,13 +367,13 @@ def set_session_status(
 
 
 def set_codex_thread_id(
-    socket_path: Path, session_id: str, codex_thread_id: str, timeout: float = 2.0
+    socket_path: Path, lode_id: str, codex_thread_id: str, timeout: float = 2.0
 ) -> bool:
-    """Set a session's Codex thread ID (fire-and-forget).
+    """Set a lode's Codex thread ID (fire-and-forget).
 
     Args:
         socket_path: Path to the Unix socket
-        session_id: The session ID to update
+        lode_id: The lode ID to update
         codex_thread_id: The Codex thread UUID to store
         timeout: Connection timeout in seconds
 
@@ -383,8 +381,8 @@ def set_codex_thread_id(
         True if message was sent successfully, False otherwise
     """
     msg = {
-        "type": "session_set_codex_thread",
-        "session_id": session_id,
+        "type": "lode_set_codex_thread",
+        "lode_id": lode_id,
         "codex_thread_id": codex_thread_id,
         "ts": int(time.time() * 1000),
     }
@@ -399,7 +397,7 @@ def add_backlog(
     socket_path: Path,
     project: str,
     description: str,
-    session_id: str | None = None,
+    lode_id: str | None = None,
     timeout: float = 2.0,
 ) -> bool:
     """Add a backlog item via the server (fire-and-forget).
@@ -408,7 +406,7 @@ def add_backlog(
         socket_path: Path to the Unix socket
         project: Project name
         description: Item description
-        session_id: Optional session that added it
+        lode_id: Optional lode that added it
         timeout: Connection timeout in seconds
 
     Returns:
@@ -420,8 +418,8 @@ def add_backlog(
         "description": description,
         "ts": int(time.time() * 1000),
     }
-    if session_id:
-        msg["session_id"] = session_id
+    if lode_id:
+        msg["lode_id"] = lode_id
     try:
         send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
         return True

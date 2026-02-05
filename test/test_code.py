@@ -28,20 +28,20 @@ def _mock_response(
     return {
         "type": "connected",
         "tmux": None,
-        "session": {
+        "lode": {
             "stage": stage,
             "project": project,
             "scope": scope,
             "codex_thread_id": codex_thread_id,
         },
-        "session_found": True,
+        "lode_found": True,
     }
 
 
 class TestRunCode:
     def test_session_not_found(self, capsys):
         """Returns 1 when session doesn't exist."""
-        with patch("hopper.code.connect", return_value={"session": None}):
+        with patch("hopper.code.connect", return_value={"lode": None}):
             exit_code = run_code("sid", Path("/tmp/test.sock"), "audit", "test request")
 
         assert exit_code == 1
@@ -77,14 +77,14 @@ class TestRunCode:
         """Returns 1 when cwd doesn't match worktree."""
         monkeypatch.chdir(tmp_path)
 
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
         with (
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=None),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
         ):
             exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
 
@@ -93,7 +93,7 @@ class TestRunCode:
 
     def test_prompt_not_found(self, tmp_path, monkeypatch, capsys):
         """Returns 1 when stage prompt doesn't exist."""
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
@@ -101,7 +101,7 @@ class TestRunCode:
         with (
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=None),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
             patch("hopper.code.prompt.load", side_effect=FileNotFoundError("nope")),
         ):
             exit_code = run_code("test-sid", Path("/tmp/test.sock"), "nonexistent", "test request")
@@ -111,7 +111,7 @@ class TestRunCode:
 
     def test_runs_codex_resume_and_saves_artifacts(self, tmp_path, monkeypatch, capsys):
         """Runs codex resume, saves input/output/metadata, prints output, manages state."""
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
@@ -134,8 +134,8 @@ class TestRunCode:
             patch("hopper.code.prompt.load", return_value="prompt text"),
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=mock_project),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
-            patch("hopper.code.set_session_state", side_effect=mock_set_state),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
+            patch("hopper.code.set_lode_state", side_effect=mock_set_state),
             patch("hopper.code.run_codex", side_effect=mock_run_codex),
         ):
             exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
@@ -158,7 +158,7 @@ class TestRunCode:
         # Metadata saved with codex_thread_id
         meta = json.loads((session_dir / "audit.json").read_text())
         assert meta["stage"] == "audit"
-        assert meta["session_id"] == "test-sid"
+        assert meta["lode_id"] == "test-sid"
         assert meta["codex_thread_id"] == THREAD_ID
         assert meta["exit_code"] == 0
         assert meta["cmd"] == MOCK_CMD
@@ -167,7 +167,7 @@ class TestRunCode:
 
     def test_restores_state_on_failure(self, tmp_path, monkeypatch):
         """Restores state and writes metadata even when codex fails."""
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
@@ -182,8 +182,8 @@ class TestRunCode:
             patch("hopper.code.prompt.load", return_value="prompt text"),
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=None),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
-            patch("hopper.code.set_session_state", side_effect=mock_set_state),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
+            patch("hopper.code.set_lode_state", side_effect=mock_set_state),
             patch("hopper.code.run_codex", return_value=(1, MOCK_CMD)),
         ):
             exit_code = run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
@@ -206,7 +206,7 @@ class TestRunCode:
 
     def test_loads_prompt_with_context(self, tmp_path, monkeypatch):
         """Loads prompt with project context."""
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
@@ -224,8 +224,8 @@ class TestRunCode:
             patch("hopper.code.prompt.load", side_effect=mock_load),
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=mock_project),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
-            patch("hopper.code.set_session_state", return_value=True),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
+            patch("hopper.code.set_lode_state", return_value=True),
             patch("hopper.code.run_codex", return_value=(0, MOCK_CMD)),
         ):
             run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")
@@ -240,7 +240,7 @@ class TestRunCode:
 
     def test_input_saved_before_codex_runs(self, tmp_path, monkeypatch):
         """Input prompt is saved before codex is invoked."""
-        session_dir = tmp_path / "sessions" / "test-sid"
+        session_dir = tmp_path / "lodes" / "test-sid"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         monkeypatch.chdir(worktree)
@@ -256,8 +256,8 @@ class TestRunCode:
             patch("hopper.code.prompt.load", return_value="the prompt"),
             patch("hopper.code.connect", return_value=_mock_response()),
             patch("hopper.code.find_project", return_value=None),
-            patch("hopper.code.get_session_dir", return_value=session_dir),
-            patch("hopper.code.set_session_state", return_value=True),
+            patch("hopper.code.get_lode_dir", return_value=session_dir),
+            patch("hopper.code.set_lode_state", return_value=True),
             patch("hopper.code.run_codex", side_effect=mock_run_codex),
         ):
             run_code("test-sid", Path("/tmp/test.sock"), "audit", "test request")

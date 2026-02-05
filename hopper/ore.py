@@ -1,4 +1,4 @@
-"""Ore runner - wraps Claude execution with session lifecycle management."""
+"""Ore runner - wraps Claude execution with lode lifecycle management."""
 
 from pathlib import Path
 
@@ -7,19 +7,19 @@ from hopper.runner import BaseRunner
 
 
 class OreRunner(BaseRunner):
-    """Runs Claude for an ore-stage session, managing active/inactive state."""
+    """Runs Claude for an ore-stage lode, managing active/inactive state."""
 
     _done_label = "Shovel done"
     _first_run_state = "new"
     _done_status = "Shovel-ready prompt saved"
     _next_stage = "processing"
 
-    def __init__(self, session_id: str, socket_path: Path):
-        super().__init__(session_id, socket_path)
+    def __init__(self, lode_id: str, socket_path: Path):
+        super().__init__(lode_id, socket_path)
         self.scope: str = ""
 
-    def _load_session_data(self, session_data: dict) -> None:
-        self.scope = session_data.get("scope", "")
+    def _load_lode_data(self, lode_data: dict) -> None:
+        self.scope = lode_data.get("scope", "")
 
     def _setup(self) -> int | None:
         # Validate project directory if set
@@ -42,14 +42,16 @@ class OreRunner(BaseRunner):
             if self.scope:
                 context["scope"] = self.scope
             initial_prompt = prompt.load("shovel", context=context if context else None)
-            cmd = ["claude", skip, "--session-id", self.session_id, initial_prompt]
+            # Note: --session-id is Claude's flag, not ours
+            cmd = ["claude", skip, "--session-id", self.lode_id, initial_prompt]
         else:
-            cmd = ["claude", skip, "--resume", self.session_id]
+            # Note: --resume is Claude's flag, not ours
+            cmd = ["claude", skip, "--resume", self.lode_id]
 
         return cmd, cwd
 
 
-def run_ore(session_id: str, socket_path: Path) -> int:
+def run_ore(lode_id: str, socket_path: Path) -> int:
     """Entry point for ore command."""
-    runner = OreRunner(session_id, socket_path)
+    runner = OreRunner(lode_id, socket_path)
     return runner.run()

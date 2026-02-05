@@ -1,4 +1,4 @@
-"""Session management for hopper."""
+"""Lode management for hopper."""
 
 import json
 import os
@@ -107,20 +107,20 @@ def format_duration_ms(duration_ms: int) -> str:
 
 
 @dataclass
-class Session:
-    """A hopper session."""
+class Lode:
+    """A hopper lode."""
 
     id: str
     stage: str  # "ore", "processing", or "ship"
     created_at: int  # milliseconds since epoch
-    project: str = ""  # Project name this session belongs to
+    project: str = ""  # Project name this lode belongs to
     scope: str = ""  # User's task scope description
     updated_at: int = field(default=0)  # milliseconds since epoch, 0 means use created_at
     state: str = "new"  # Freeform: "new", "running", "stuck", "error", task names, etc.
     status: str = ""  # Human-readable status text
     active: bool = False  # Whether a hop ore client is connected
     tmux_pane: str | None = None  # tmux pane ID (e.g., "%1")
-    codex_thread_id: str | None = None  # Codex session ID for stage resumption
+    codex_thread_id: str | None = None  # Codex thread ID for stage resumption
     backlog: dict | None = None  # Original backlog item data if promoted from backlog
 
     @property
@@ -154,7 +154,7 @@ class Session:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Session":
+    def from_dict(cls, data: dict) -> "Lode":
         return cls(
             id=data["id"],
             stage=data["stage"],
@@ -171,53 +171,53 @@ class Session:
         )
 
 
-def get_session_dir(session_id: str) -> Path:
-    """Get the directory for a session."""
-    return config.hopper_dir() / "sessions" / session_id
+def get_lode_dir(lode_id: str) -> Path:
+    """Get the directory for a lode."""
+    return config.hopper_dir() / "lodes" / lode_id
 
 
-def load_sessions() -> list[Session]:
-    """Load active sessions from JSONL file."""
-    sessions_file = config.hopper_dir() / "sessions.jsonl"
-    if not sessions_file.exists():
+def load_lodes() -> list[Lode]:
+    """Load active lodes from JSONL file."""
+    lodes_file = config.hopper_dir() / "active.jsonl"
+    if not lodes_file.exists():
         return []
 
-    sessions = []
-    with open(sessions_file) as f:
+    lodes = []
+    with open(lodes_file) as f:
         for line in f:
             line = line.strip()
             if line:
                 data = json.loads(line)
-                sessions.append(Session.from_dict(data))
-    return sessions
+                lodes.append(Lode.from_dict(data))
+    return lodes
 
 
-def save_sessions(sessions: list[Session]) -> None:
-    """Atomically save sessions to JSONL file."""
-    sessions_file = config.hopper_dir() / "sessions.jsonl"
-    sessions_file.parent.mkdir(parents=True, exist_ok=True)
+def save_lodes(lodes: list[Lode]) -> None:
+    """Atomically save lodes to JSONL file."""
+    lodes_file = config.hopper_dir() / "active.jsonl"
+    lodes_file.parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_path = sessions_file.with_suffix(".jsonl.tmp")
+    tmp_path = lodes_file.with_suffix(".jsonl.tmp")
     with open(tmp_path, "w") as f:
-        for session in sessions:
-            f.write(json.dumps(session.to_dict()) + "\n")
+        for lode in lodes:
+            f.write(json.dumps(lode.to_dict()) + "\n")
 
-    os.replace(tmp_path, sessions_file)
+    os.replace(tmp_path, lodes_file)
 
 
-def create_session(sessions: list[Session], project: str, scope: str = "") -> Session:
-    """Create a new session, add to list, and create its directory.
+def create_lode(lodes: list[Lode], project: str, scope: str = "") -> Lode:
+    """Create a new lode, add to list, and create its directory.
 
     Args:
-        sessions: List of sessions to add to.
-        project: Project name for this session.
+        lodes: List of lodes to add to.
+        project: Project name for this lode.
         scope: User's task scope description.
 
     Returns:
-        The newly created session.
+        The newly created lode.
     """
     now = current_time_ms()
-    session = Session(
+    lode = Lode(
         id=str(uuid.uuid4()),
         stage="ore",
         created_at=now,
@@ -227,32 +227,32 @@ def create_session(sessions: list[Session], project: str, scope: str = "") -> Se
         state="new",
         status="Ready to start",
     )
-    sessions.append(session)
-    get_session_dir(session.id).mkdir(parents=True, exist_ok=True)
-    save_sessions(sessions)
-    return session
+    lodes.append(lode)
+    get_lode_dir(lode.id).mkdir(parents=True, exist_ok=True)
+    save_lodes(lodes)
+    return lode
 
 
-def update_session_stage(sessions: list[Session], session_id: str, stage: str) -> Session | None:
-    """Update a session's stage. Returns the updated session or None if not found."""
-    for session in sessions:
-        if session.id == session_id:
-            session.stage = stage
-            session.touch()
-            save_sessions(sessions)
-            return session
+def update_lode_stage(lodes: list[Lode], lode_id: str, stage: str) -> Lode | None:
+    """Update a lode's stage. Returns the updated lode or None if not found."""
+    for lode in lodes:
+        if lode.id == lode_id:
+            lode.stage = stage
+            lode.touch()
+            save_lodes(lodes)
+            return lode
     return None
 
 
-def archive_session(sessions: list[Session], session_id: str) -> Session | None:
-    """Archive a session: append to archived.jsonl and remove from active list.
+def archive_lode(lodes: list[Lode], lode_id: str) -> Lode | None:
+    """Archive a lode: append to archived.jsonl and remove from active list.
 
-    The session directory is left intact.
-    Returns the archived session or None if not found.
+    The lode directory is left intact.
+    Returns the archived lode or None if not found.
     """
-    for i, session in enumerate(sessions):
-        if session.id == session_id:
-            archived = sessions.pop(i)
+    for i, lode in enumerate(lodes):
+        if lode.id == lode_id:
+            archived = lodes.pop(i)
 
             # Append to archive file
             archived_file = config.hopper_dir() / "archived.jsonl"
@@ -260,47 +260,45 @@ def archive_session(sessions: list[Session], session_id: str) -> Session | None:
             with open(archived_file, "a") as f:
                 f.write(json.dumps(archived.to_dict()) + "\n")
 
-            save_sessions(sessions)
+            save_lodes(lodes)
             return archived
     return None
 
 
-def update_session_state(
-    sessions: list[Session], session_id: str, state: str, status: str
-) -> Session | None:
-    """Update a session's state and status. Returns the updated session or None if not found."""
-    for session in sessions:
-        if session.id == session_id:
-            session.state = state
-            session.status = status
-            session.touch()
-            save_sessions(sessions)
-            return session
+def update_lode_state(lodes: list[Lode], lode_id: str, state: str, status: str) -> Lode | None:
+    """Update a lode's state and status. Returns the updated lode or None if not found."""
+    for lode in lodes:
+        if lode.id == lode_id:
+            lode.state = state
+            lode.status = status
+            lode.touch()
+            save_lodes(lodes)
+            return lode
     return None
 
 
-def update_session_status(sessions: list[Session], session_id: str, status: str) -> Session | None:
-    """Update a session's status text only. Returns the updated session or None if not found."""
-    for session in sessions:
-        if session.id == session_id:
-            session.status = status
-            session.touch()
-            save_sessions(sessions)
-            return session
+def update_lode_status(lodes: list[Lode], lode_id: str, status: str) -> Lode | None:
+    """Update a lode's status text only. Returns the updated lode or None if not found."""
+    for lode in lodes:
+        if lode.id == lode_id:
+            lode.status = status
+            lode.touch()
+            save_lodes(lodes)
+            return lode
     return None
 
 
-def find_by_short_id(sessions: list[Session], prefix: str) -> Session | None:
-    """Find a session by ID prefix.
+def find_by_short_id(lodes: list[Lode], prefix: str) -> Lode | None:
+    """Find a lode by ID prefix.
 
     Args:
-        sessions: List of sessions to search
+        lodes: List of lodes to search
         prefix: ID prefix to match (can be full ID or short ID)
 
     Returns:
-        The matching session, or None if not found or ambiguous (multiple matches)
+        The matching lode, or None if not found or ambiguous (multiple matches)
     """
-    matches = [s for s in sessions if s.id.startswith(prefix)]
+    matches = [s for s in lodes if s.id.startswith(prefix)]
     if len(matches) == 1:
         return matches[0]
     return None

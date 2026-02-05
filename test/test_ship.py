@@ -8,15 +8,15 @@ from hopper.ship import ShipRunner, run_ship
 
 
 class TestShipRunner:
-    def _make_runner(self, session_id="test-session-id"):
-        return ShipRunner(session_id, Path("/tmp/test.sock"))
+    def _make_runner(self, lode_id="test-session-id"):
+        return ShipRunner(lode_id, Path("/tmp/test.sock"))
 
     def _mock_response(self, state="ready", active=False, project="my-project", stage="ship"):
         return {
             "type": "connected",
             "tmux": None,
-            "session": {"state": state, "active": active, "project": project, "stage": stage},
-            "session_found": True,
+            "lode": {"state": state, "active": active, "project": project, "stage": stage},
+            "lode_found": True,
         }
 
     def _mock_conn(self, emitted=None):
@@ -34,7 +34,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         worktree = session_dir / "worktree"
         worktree.mkdir()
@@ -50,7 +50,7 @@ class TestShipRunner:
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("hopper.ship.prompt.load", return_value="loaded prompt") as mock_load,
@@ -81,7 +81,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         worktree = session_dir / "worktree"
         worktree.mkdir()
@@ -97,7 +97,7 @@ class TestShipRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -152,7 +152,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         # No worktree created
 
@@ -162,7 +162,7 @@ class TestShipRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
         ):
             exit_code = runner.run()
 
@@ -176,7 +176,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -186,7 +186,7 @@ class TestShipRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=True),
         ):
             exit_code = runner.run()
@@ -201,7 +201,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -211,7 +211,7 @@ class TestShipRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="feature-xyz"),
         ):
@@ -229,7 +229,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -244,7 +244,7 @@ class TestShipRunner:
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="master"),
             patch("hopper.ship.prompt.load", return_value="prompt"),
@@ -272,7 +272,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -287,7 +287,7 @@ class TestShipRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("subprocess.Popen", return_value=mock_proc),
@@ -297,7 +297,7 @@ class TestShipRunner:
 
         assert exit_code == 1
         error_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "error"
+            e for e in emitted if e[0] == "lode_set_state" and e[1]["state"] == "error"
         ]
         assert len(error_emissions) == 1
         assert "Merge failed" in error_emissions[0][1]["status"]
@@ -310,7 +310,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -325,7 +325,7 @@ class TestShipRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("subprocess.Popen", return_value=mock_proc),
@@ -334,7 +334,7 @@ class TestShipRunner:
             exit_code = runner.run()
 
         assert exit_code == 0
-        assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
+        assert any(e[0] == "lode_set_state" and e[1]["state"] == "running" for e in emitted)
 
     def test_no_stage_transition_on_completion(self, tmp_path):
         """Ship runner has no next stage — no stage transition emitted."""
@@ -344,7 +344,7 @@ class TestShipRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session"
+        session_dir = tmp_path / "lodes" / "test-session"
         session_dir.mkdir(parents=True)
         (session_dir / "worktree").mkdir()
 
@@ -364,13 +364,13 @@ class TestShipRunner:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "session": {"state": "ready", "project": "my-project", "stage": "ship"},
-                    "session_found": True,
+                    "lode": {"state": "ready", "project": "my-project", "stage": "ship"},
+                    "lode_found": True,
                 },
             ),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("hopper.ship.prompt.load", return_value="prompt"),
@@ -383,13 +383,13 @@ class TestShipRunner:
         assert exit_code == 0
         # State emitted as ready with Ship complete
         assert any(
-            e[0] == "session_set_state"
+            e[0] == "lode_set_state"
             and e[1]["state"] == "ready"
             and "Ship complete" in e[1]["status"]
             for e in emitted
         )
         # No stage transition (ship is terminal)
-        assert not any(e[0] == "session_update" for e in emitted)
+        assert not any(e[0] == "lode_update" for e in emitted)
 
 
 class TestRunShip:
@@ -398,7 +398,7 @@ class TestRunShip:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-id"
+        session_dir = tmp_path / "lodes" / "test-id"
         (session_dir / "worktree").mkdir(parents=True)
 
         mock_project = MagicMock()
@@ -414,15 +414,15 @@ class TestRunShip:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "project": "my-project", "stage": "ship"},
-            "session_found": True,
+            "lode": {"state": "running", "project": "my-project", "stage": "ship"},
+            "lode_found": True,
         }
 
         with (
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.ship.get_session_dir", return_value=session_dir),
+            patch("hopper.ship.get_lode_dir", return_value=session_dir),
             patch("hopper.ship.is_dirty", return_value=False),
             patch("hopper.ship.current_branch", return_value="main"),
             patch("subprocess.Popen", return_value=mock_proc),

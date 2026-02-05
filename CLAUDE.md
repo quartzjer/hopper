@@ -4,11 +4,11 @@ Development guidelines for Hopper, a TUI for managing coding agents.
 
 ## Project Overview
 
-Hopper manages multiple Claude Code sessions through a terminal interface. It runs inside tmux, spawning each Claude instance in its own window while providing a central dashboard for navigation and status. The server persists state and broadcasts changes over a Unix socket; the TUI renders from that state.
+Hopper manages multiple Claude Code sessions (called "lodes") through a terminal interface. It runs inside tmux, spawning each Claude instance in its own window while providing a central dashboard for navigation and status. The server persists state and broadcasts changes over a Unix socket; the TUI renders from that state.
 
 ## Key Concepts
 
-- **Session** - A Claude Code instance with a unique ID, workflow stage, freeform state, active flag, and associated tmux window
+- **Lode** - A Claude Code instance with a unique ID, workflow stage, freeform state, active flag, and associated tmux window
 - **Stage** - Workflow position: "ore" (new/unprocessed), "processing" (in progress), or "ship" (merging back to main)
 - **Backlog** - Future work items with project and description
 
@@ -19,16 +19,16 @@ CLI (hop up)
     |
     +-- Server (background thread)
     |   +-- Unix socket listener
-    |   +-- Session + backlog state (in-memory + JSONL persistence)
+    |   +-- Lode + backlog state (in-memory + JSONL persistence)
     |   +-- Broadcast to connected clients
     |
     +-- TUI (main thread)
-        +-- Renders from server's session list
+        +-- Renders from server's lode list
         +-- Handles keyboard input
         +-- Spawns Claude in tmux windows
 ```
 
-**Data flow:** User input -> TUI -> Session mutation -> Server broadcast -> TUI re-render
+**Data flow:** User input -> TUI -> Lode mutation -> Server broadcast -> TUI re-render
 
 **Persistence:** JSONL files in the data directory (via platformdirs). See `hopper/config.py` for paths.
 
@@ -51,8 +51,8 @@ pytest test/test_file.py::test_name  # Run a single test
 
 ## TUI Conventions
 
-- **Framework**: [Textual](https://textual.textualize.io/) with `DataTable` for session/backlog lists
+- **Framework**: [Textual](https://textual.textualize.io/) with `DataTable` for lode/backlog lists
 - **Unicode only, no emoji** - Use Unicode symbols for status indicators. Never use emoji.
 - **Color for meaning** - Green=running, red=error, cyan=action, dim=new/secondary
 - **Status at row start** - Put status indicators at the beginning of rows for quick scanning
-- **Two-table layout** - Sessions table and Backlog table, Tab switches focus
+- **Two-table layout** - Lodes table and Backlog table, Tab switches focus

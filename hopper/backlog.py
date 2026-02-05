@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 
 from hopper import config
-from hopper.sessions import SHORT_ID_LEN, current_time_ms
+from hopper.lodes import SHORT_ID_LEN, current_time_ms
 
 
 @dataclass
@@ -17,7 +17,7 @@ class BacklogItem:
     project: str
     description: str
     created_at: int  # milliseconds since epoch
-    session_id: str | None = None  # session that added it
+    lode_id: str | None = None  # lode that added it
 
     @property
     def short_id(self) -> str:
@@ -30,7 +30,7 @@ class BacklogItem:
             "project": self.project,
             "description": self.description,
             "created_at": self.created_at,
-            "session_id": self.session_id,
+            "lode_id": self.lode_id,
         }
 
     @classmethod
@@ -40,7 +40,7 @@ class BacklogItem:
             project=data["project"],
             description=data["description"],
             created_at=data["created_at"],
-            session_id=data.get("session_id"),
+            lode_id=data.get("lode_id"),
         )
 
 
@@ -77,7 +77,7 @@ def add_backlog_item(
     items: list[BacklogItem],
     project: str,
     description: str,
-    session_id: str | None = None,
+    lode_id: str | None = None,
 ) -> BacklogItem:
     """Create a new backlog item, add to list, and persist."""
     item = BacklogItem(
@@ -85,7 +85,7 @@ def add_backlog_item(
         project=project,
         description=description,
         created_at=current_time_ms(),
-        session_id=session_id,
+        lode_id=lode_id,
     )
     items.append(item)
     save_backlog(items)

@@ -14,12 +14,12 @@ from hopper.cli import (
     cmd_shovel,
     cmd_status,
     cmd_up,
-    get_hopper_sid,
+    get_hopper_lid,
     main,
     require_config_name,
     require_no_server,
     require_server,
-    validate_hopper_sid,
+    validate_hopper_lid,
 )
 
 
@@ -113,7 +113,7 @@ def test_ore_help(capsys):
     assert result == 0
     captured = capsys.readouterr()
     assert "usage: hop ore" in captured.out
-    assert "session_id" in captured.out
+    assert "lode_id" in captured.out
 
 
 def test_status_help(capsys):
@@ -164,13 +164,13 @@ def test_status_unknown_arg(capsys):
     assert "usage: hop status" in captured.out
 
 
-def test_ore_missing_session_id(capsys):
-    """ore requires session_id argument."""
+def test_ore_missing_lode_id(capsys):
+    """ore requires lode_id argument."""
     result = cmd_ore([])
     assert result == 1
     captured = capsys.readouterr()
     assert "error:" in captured.out
-    assert "session_id" in captured.out
+    assert "lode_id" in captured.out
 
 
 def test_ore_delegates_to_runner(capsys):
@@ -195,13 +195,13 @@ def test_ping_command_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_ping_command_validates_hopper_sid(capsys):
-    """Ping command validates HOPPER_SID if set."""
+def test_ping_command_validates_hopper_lid(capsys):
+    """Ping command validates HOPPER_LID if set."""
     # connect returns session_found=False for invalid session
-    mock_response = {"type": "connected", "tmux": None, "session": None, "session_found": False}
+    mock_response = {"type": "connected", "tmux": None, "lode": None, "lode_found": False}
     with patch.object(sys, "argv", ["hopper", "ping"]):
         with patch("hopper.client.connect", return_value=mock_response):
-            with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+            with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
                 result = main()
     assert result == 1
     captured = capsys.readouterr()
@@ -210,12 +210,12 @@ def test_ping_command_validates_hopper_sid(capsys):
 
 
 def test_ping_command_success(capsys):
-    """Ping command returns 0 when server running and no HOPPER_SID."""
+    """Ping command returns 0 when server running and no HOPPER_LID."""
     mock_response = {"type": "connected", "tmux": None}
     with patch.object(sys, "argv", ["hopper", "ping"]):
         with patch("hopper.client.connect", return_value=mock_response):
             env = os.environ.copy()
-            env.pop("HOPPER_SID", None)
+            env.pop("HOPPER_LID", None)
             with patch.dict(os.environ, env, clear=True):
                 result = main()
     assert result == 0
@@ -241,7 +241,7 @@ def test_up_command_requires_tmux(capsys):
     assert "tmux new 'hop up'" in captured.out
 
 
-def test_up_command_shows_existing_sessions(capsys):
+def test_up_command_shows_existing_lodes(capsys):
     """Up command shows existing sessions when tmux is running."""
     with patch.object(sys, "argv", ["hopper", "up"]):
         with patch("hopper.cli.require_no_server", return_value=None):
@@ -337,55 +337,55 @@ def test_require_no_server_failure(capsys):
     assert "Server already running" in captured.out
 
 
-# Tests for get_hopper_sid
+# Tests for get_hopper_lid
 
 
-def test_get_hopper_sid_set():
-    """get_hopper_sid returns value when set."""
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session-123"}):
-        result = get_hopper_sid()
+def test_get_hopper_lid_set():
+    """get_hopper_lid returns value when set."""
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session-123"}):
+        result = get_hopper_lid()
     assert result == "test-session-123"
 
 
-def test_get_hopper_sid_not_set():
-    """get_hopper_sid returns None when not set."""
+def test_get_hopper_lid_not_set():
+    """get_hopper_lid returns None when not set."""
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
-        result = get_hopper_sid()
+        result = get_hopper_lid()
     assert result is None
 
 
-# Tests for validate_hopper_sid
+# Tests for validate_hopper_lid
 
 
-def test_validate_hopper_sid_not_set():
-    """validate_hopper_sid returns None when HOPPER_SID not set."""
+def test_validate_hopper_lid_not_set():
+    """validate_hopper_lid returns None when HOPPER_LID not set."""
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
-        result = validate_hopper_sid()
+        result = validate_hopper_lid()
     assert result is None
 
 
-def test_validate_hopper_sid_valid():
-    """validate_hopper_sid returns None when session exists."""
-    with patch.dict(os.environ, {"HOPPER_SID": "valid-session"}):
-        with patch("hopper.client.session_exists", return_value=True):
-            result = validate_hopper_sid()
+def test_validate_hopper_lid_valid():
+    """validate_hopper_lid returns None when session exists."""
+    with patch.dict(os.environ, {"HOPPER_LID": "valid-session"}):
+        with patch("hopper.client.lode_exists", return_value=True):
+            result = validate_hopper_lid()
     assert result is None
 
 
-def test_validate_hopper_sid_invalid(capsys):
-    """validate_hopper_sid returns 1 when session doesn't exist."""
-    with patch.dict(os.environ, {"HOPPER_SID": "invalid-session"}):
-        with patch("hopper.client.session_exists", return_value=False):
-            result = validate_hopper_sid()
+def test_validate_hopper_lid_invalid(capsys):
+    """validate_hopper_lid returns 1 when session doesn't exist."""
+    with patch.dict(os.environ, {"HOPPER_LID": "invalid-session"}):
+        with patch("hopper.client.lode_exists", return_value=False):
+            result = validate_hopper_lid()
     assert result == 1
     captured = capsys.readouterr()
     assert "invalid-session" in captured.out
     assert "not found or archived" in captured.out
-    assert "unset HOPPER_SID" in captured.out
+    assert "unset HOPPER_LID" in captured.out
 
 
 # Tests for status command
@@ -400,23 +400,23 @@ def test_status_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_status_no_hopper_sid(capsys):
-    """status command returns 1 when HOPPER_SID not set."""
+def test_status_no_hopper_lid(capsys):
+    """status command returns 1 when HOPPER_LID not set."""
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.client.ping", return_value=True):
             result = cmd_status([])
     assert result == 1
     captured = capsys.readouterr()
-    assert "HOPPER_SID not set" in captured.out
+    assert "HOPPER_LID not set" in captured.out
 
 
 def test_status_invalid_session(capsys):
     """status command returns 1 when session doesn't exist."""
-    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=False):
+            with patch("hopper.client.lode_exists", return_value=False):
                 result = cmd_status([])
     assert result == 1
     captured = capsys.readouterr()
@@ -427,10 +427,10 @@ def test_status_invalid_session(capsys):
 def test_status_show(capsys):
     """status command shows current status when no args."""
     session_data = {"id": "test-session", "status": "Working on feature X"}
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.get_session", return_value=session_data):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
                     result = cmd_status([])
     assert result == 0
     captured = capsys.readouterr()
@@ -440,10 +440,10 @@ def test_status_show(capsys):
 def test_status_show_empty(capsys):
     """status command shows placeholder when no status set."""
     session_data = {"id": "test-session", "status": ""}
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.get_session", return_value=session_data):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
                     result = cmd_status([])
     assert result == 0
     captured = capsys.readouterr()
@@ -453,11 +453,11 @@ def test_status_show_empty(capsys):
 def test_status_update(capsys):
     """status command updates status when args provided."""
     session_data = {"id": "test-session", "status": "Old status"}
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.get_session", return_value=session_data):
-                    with patch("hopper.client.set_session_status", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
+                    with patch("hopper.client.set_lode_status", return_value=True):
                         result = cmd_status(["New", "status", "text"])
     assert result == 0
     captured = capsys.readouterr()
@@ -467,11 +467,11 @@ def test_status_update(capsys):
 def test_status_update_from_empty(capsys):
     """status command shows simpler message when updating from empty."""
     session_data = {"id": "test-session", "status": ""}
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.get_session", return_value=session_data):
-                    with patch("hopper.client.set_session_status", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
+                    with patch("hopper.client.set_lode_status", return_value=True):
                         result = cmd_status(["New status"])
     assert result == 0
     captured = capsys.readouterr()
@@ -481,9 +481,9 @@ def test_status_update_from_empty(capsys):
 
 def test_status_empty_text_error(capsys):
     """status command returns 1 when given empty text."""
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
                 result = cmd_status(["", "  "])
     assert result == 1
     captured = capsys.readouterr()
@@ -707,7 +707,7 @@ def test_screenshot_no_tmux_location(capsys):
 
 def test_screenshot_capture_fails(capsys):
     """screenshot returns 1 when capture_pane fails."""
-    mock_response = {"type": "connected", "tmux": {"session": "main", "pane": "%0"}}
+    mock_response = {"type": "connected", "tmux": {"lode": "main", "pane": "%0"}}
     with patch("hopper.client.ping", return_value=True):
         with patch("hopper.client.connect", return_value=mock_response):
             with patch("hopper.tmux.capture_pane", return_value=None):
@@ -719,7 +719,7 @@ def test_screenshot_capture_fails(capsys):
 
 def test_screenshot_success(capsys):
     """screenshot prints captured content on success."""
-    mock_response = {"type": "connected", "tmux": {"session": "main", "pane": "%0"}}
+    mock_response = {"type": "connected", "tmux": {"lode": "main", "pane": "%0"}}
     ansi_content = "\x1b[32mGreen text\x1b[0m\nMore lines\n"
     with patch("hopper.client.ping", return_value=True):
         with patch("hopper.client.connect", return_value=mock_response):
@@ -750,23 +750,23 @@ def test_shovel_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_shovel_no_hopper_sid(capsys):
-    """shovel returns 1 when HOPPER_SID not set."""
+def test_shovel_no_hopper_lid(capsys):
+    """shovel returns 1 when HOPPER_LID not set."""
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.client.ping", return_value=True):
             result = cmd_shovel([])
     assert result == 1
     captured = capsys.readouterr()
-    assert "HOPPER_SID not set" in captured.out
+    assert "HOPPER_LID not set" in captured.out
 
 
 def test_shovel_invalid_session(capsys):
     """shovel returns 1 when session doesn't exist."""
-    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=False):
+            with patch("hopper.client.lode_exists", return_value=False):
                 result = cmd_shovel([])
     assert result == 1
     captured = capsys.readouterr()
@@ -778,9 +778,9 @@ def test_shovel_empty_stdin(capsys):
     """shovel returns 1 on empty stdin."""
     from io import StringIO
 
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
                 with patch("sys.stdin", StringIO("")):
                     result = cmd_shovel([])
     assert result == 1
@@ -792,14 +792,14 @@ def test_shovel_saves_file(temp_config, capsys):
     """shovel saves prompt to session directory and updates state."""
     from io import StringIO
 
-    session_id = "test-session-1234"
-    session_dir = temp_config / "sessions" / session_id
+    lode_id = "test-session-1234"
+    session_dir = temp_config / "lodes" / lode_id
     prompt_text = "# Shovel-ready prompt\n\nDo the thing.\n"
 
-    with patch.dict(os.environ, {"HOPPER_SID": session_id}):
+    with patch.dict(os.environ, {"HOPPER_LID": lode_id}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.set_session_state", return_value=True) as mock_set:
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
                     with patch("sys.stdin", StringIO(prompt_text)):
                         result = cmd_shovel([])
 
@@ -812,10 +812,10 @@ def test_shovel_saves_file(temp_config, capsys):
     assert shovel_path.exists()
     assert shovel_path.read_text() == prompt_text
 
-    # Verify state was updated: set_session_state(socket_path, session_id, state, status)
+    # Verify state was updated: set_lode_state(socket_path, lode_id, state, status)
     mock_set.assert_called_once()
     _, sid, state, status = mock_set.call_args[0]
-    assert sid == session_id
+    assert sid == lode_id
     assert state == "completed"
     assert "complete" in status.lower()
 
@@ -844,27 +844,27 @@ def test_refined_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_refined_no_hopper_sid(capsys):
-    """refined returns 1 when HOPPER_SID not set."""
+def test_refined_no_hopper_lid(capsys):
+    """refined returns 1 when HOPPER_LID not set."""
     from hopper.cli import cmd_refined
 
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.client.ping", return_value=True):
             result = cmd_refined([])
     assert result == 1
     captured = capsys.readouterr()
-    assert "HOPPER_SID not set" in captured.out
+    assert "HOPPER_LID not set" in captured.out
 
 
 def test_refined_invalid_session(capsys):
     """refined returns 1 when session doesn't exist."""
     from hopper.cli import cmd_refined
 
-    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=False):
+            with patch("hopper.client.lode_exists", return_value=False):
                 result = cmd_refined([])
     assert result == 1
     captured = capsys.readouterr()
@@ -876,10 +876,10 @@ def test_refined_success(capsys):
     """refined sets state to completed and prints confirmation."""
     from hopper.cli import cmd_refined
 
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.set_session_state", return_value=True) as mock_set:
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
                     result = cmd_refined([])
 
     assert result == 0
@@ -917,8 +917,8 @@ def test_ship_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_ship_missing_session_id(capsys):
-    """ship requires session_id argument."""
+def test_ship_missing_lode_id(capsys):
+    """ship requires lode_id argument."""
     from hopper.cli import cmd_ship
 
     result = cmd_ship([])
@@ -951,27 +951,27 @@ def test_shipped_no_server(capsys):
     assert "Server not running" in captured.out
 
 
-def test_shipped_no_hopper_sid(capsys):
-    """shipped returns 1 when HOPPER_SID not set."""
+def test_shipped_no_hopper_lid(capsys):
+    """shipped returns 1 when HOPPER_LID not set."""
     from hopper.cli import cmd_shipped
 
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.client.ping", return_value=True):
             result = cmd_shipped([])
     assert result == 1
     captured = capsys.readouterr()
-    assert "HOPPER_SID not set" in captured.out
+    assert "HOPPER_LID not set" in captured.out
 
 
 def test_shipped_invalid_session(capsys):
     """shipped returns 1 when session doesn't exist."""
     from hopper.cli import cmd_shipped
 
-    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=False):
+            with patch("hopper.client.lode_exists", return_value=False):
                 result = cmd_shipped([])
     assert result == 1
     captured = capsys.readouterr()
@@ -983,10 +983,10 @@ def test_shipped_success(capsys):
     """shipped sets state to completed and prints confirmation."""
     from hopper.cli import cmd_shipped
 
-    with patch.dict(os.environ, {"HOPPER_SID": "test-session"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
         with patch("hopper.client.ping", return_value=True):
-            with patch("hopper.client.session_exists", return_value=True):
-                with patch("hopper.client.set_session_state", return_value=True) as mock_set:
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.set_lode_state", return_value=True) as mock_set:
                     result = cmd_shipped([])
 
     assert result == 0
@@ -1020,23 +1020,23 @@ def test_code_missing_args(capsys):
     assert "error:" in captured.out
 
 
-def test_code_requires_hopper_sid(capsys):
-    """code returns 1 when HOPPER_SID not set."""
+def test_code_requires_hopper_lid(capsys):
+    """code returns 1 when HOPPER_LID not set."""
     env = os.environ.copy()
-    env.pop("HOPPER_SID", None)
+    env.pop("HOPPER_LID", None)
     with patch.dict(os.environ, env, clear=True):
         with patch("hopper.cli.require_server", return_value=None):
             result = cmd_code(["audit"])
     assert result == 1
     captured = capsys.readouterr()
-    assert "HOPPER_SID not set" in captured.out
+    assert "HOPPER_LID not set" in captured.out
 
 
-def test_code_validates_hopper_sid(capsys):
-    """code validates HOPPER_SID exists on server."""
-    with patch.dict(os.environ, {"HOPPER_SID": "bad-session"}):
+def test_code_validates_hopper_lid(capsys):
+    """code validates HOPPER_LID exists on server."""
+    with patch.dict(os.environ, {"HOPPER_LID": "bad-session"}):
         with patch("hopper.cli.require_server", return_value=None):
-            with patch("hopper.client.session_exists", return_value=False):
+            with patch("hopper.client.lode_exists", return_value=False):
                 result = cmd_code(["audit"])
     assert result == 1
     captured = capsys.readouterr()
@@ -1047,9 +1047,9 @@ def test_code_requires_stdin(capsys):
     """code returns 1 when no stdin provided."""
     from io import StringIO
 
-    with patch.dict(os.environ, {"HOPPER_SID": "test-1234"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-1234"}):
         with patch("hopper.cli.require_server", return_value=None):
-            with patch("hopper.client.session_exists", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
                 with patch("sys.stdin", StringIO("")):
                     result = cmd_code(["audit"])
     assert result == 1
@@ -1061,15 +1061,15 @@ def test_code_dispatches_to_run_code(capsys):
     """code dispatches to run_code on valid input."""
     from io import StringIO
 
-    with patch.dict(os.environ, {"HOPPER_SID": "test-1234"}):
+    with patch.dict(os.environ, {"HOPPER_LID": "test-1234"}):
         with patch("hopper.cli.require_server", return_value=None):
-            with patch("hopper.client.session_exists", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
                 with patch("sys.stdin", StringIO("my directions")):
                     with patch("hopper.code.run_code", return_value=0) as mock_run:
                         result = cmd_code(["audit"])
     assert result == 0
     mock_run.assert_called_once()
     args = mock_run.call_args[0]
-    assert args[0] == "test-1234"  # session_id from env
+    assert args[0] == "test-1234"  # lode_id from env
     assert args[2] == "audit"  # stage_name
     assert args[3] == "my directions"  # request from stdin

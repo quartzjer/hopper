@@ -20,16 +20,16 @@ from hopper.backlog import (
 from hopper.backlog import (
     find_by_short_id as find_backlog_by_short_id,
 )
-from hopper.sessions import (
-    Session,
-    archive_session,
-    create_session,
+from hopper.lodes import (
+    Lode,
+    archive_lode,
+    create_lode,
     current_time_ms,
-    load_sessions,
-    save_sessions,
-    update_session_stage,
-    update_session_state,
-    update_session_status,
+    load_lodes,
+    save_lodes,
+    update_lode_stage,
+    update_lode_state,
+    update_lode_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class Server:
     Uses a single writer thread to serialize all broadcasts, preventing
     race conditions when multiple client handler threads send concurrently.
 
-    Tracks which clients own which sessions. Sets active=False and clears
+    Tracks which clients own which lodes. Sets active=False and clears
     tmux_pane on disconnect; state/status are client-driven.
     """
 
@@ -71,27 +71,27 @@ class Server:
         self.server_socket: socket.socket | None = None
         self.broadcast_queue: queue.Queue = queue.Queue(maxsize=10000)
         self.writer_thread: threading.Thread | None = None
-        self.sessions: list[Session] = []
+        self.lodes: list[Lode] = []
         self.backlog: list[BacklogItem] = []
-        # Session ownership tracking: session_id -> socket, socket -> session_id
-        self.session_clients: dict[str, socket.socket] = {}
-        self.client_sessions: dict[socket.socket, str] = {}
+        # Lode ownership tracking: lode_id -> socket, socket -> lode_id
+        self.lode_clients: dict[str, socket.socket] = {}
+        self.client_lodes: dict[socket.socket, str] = {}
 
     def start(self) -> None:
         """Start the server (blocking)."""
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
-        self.sessions = load_sessions()
+        self.lodes = load_lodes()
         self.backlog = load_backlog()
 
         # Clear stale active flags from previous run (no clients connected yet)
         stale = False
-        for session in self.sessions:
-            if session.active or session.tmux_pane:
-                session.active = False
-                session.tmux_pane = None
+        for lode in self.lodes:
+            if lode.active or lode.tmux_pane:
+                lode.active = False
+                lode.tmux_pane = None
                 stale = True
         if stale:
-            save_sessions(self.sessions)
+            save_lodes(self.lodes)
 
         # Remove stale socket file
         if self.socket_path.exists():
@@ -168,143 +168,143 @@ class Server:
     def _on_client_disconnect(self, conn: socket.socket) -> None:
         """Handle client disconnect - set active=False and clear tmux_pane."""
         with self.lock:
-            session_id = self.client_sessions.pop(conn, None)
-            if session_id:
-                self.session_clients.pop(session_id, None)
+            lode_id = self.client_lodes.pop(conn, None)
+            if lode_id:
+                self.lode_clients.pop(lode_id, None)
 
-        if not session_id:
+        if not lode_id:
             return
 
-        session = next((s for s in self.sessions if s.id == session_id), None)
-        if not session:
+        lode = next((s for s in self.lodes if s.id == lode_id), None)
+        if not lode:
             return
 
-        session.active = False
-        session.tmux_pane = None
-        session.touch()
-        save_sessions(self.sessions)
+        lode.active = False
+        lode.tmux_pane = None
+        lode.touch()
+        save_lodes(self.lodes)
 
-        logger.debug(f"Session {session_id[:8]} disconnected, active=False")
-        self.broadcast({"type": "session_updated", "session": session.to_dict()})
+        logger.debug(f"Lode {lode_id[:8]} disconnected, active=False")
+        self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
 
-    def _register_session_client(
-        self, session_id: str, conn: socket.socket, tmux_pane: str | None = None
+    def _register_lode_client(
+        self, lode_id: str, conn: socket.socket, tmux_pane: str | None = None
     ) -> None:
-        """Register a client as owning a session.
+        """Register a client as owning a lode.
 
-        Sets active=True on the session and disconnects any stale owner.
+        Sets active=True on the lode and disconnects any stale owner.
         """
         with self.lock:
             # Check for existing owner
-            existing_conn = self.session_clients.get(session_id)
+            existing_conn = self.lode_clients.get(lode_id)
             if existing_conn and existing_conn != conn:
                 # Disconnect stale client
-                old_session_id = self.client_sessions.pop(existing_conn, None)
-                if old_session_id:
-                    self.session_clients.pop(old_session_id, None)
+                old_lode_id = self.client_lodes.pop(existing_conn, None)
+                if old_lode_id:
+                    self.lode_clients.pop(old_lode_id, None)
                 try:
                     existing_conn.close()
                 except Exception:
                     pass
-                logger.debug(f"Disconnected stale client for session {session_id[:8]}")
+                logger.debug(f"Disconnected stale client for lode {lode_id[:8]}")
 
             # Register new owner
-            self.session_clients[session_id] = conn
-            self.client_sessions[conn] = session_id
+            self.lode_clients[lode_id] = conn
+            self.client_lodes[conn] = lode_id
 
-        # Set active on the session
-        session = next((s for s in self.sessions if s.id == session_id), None)
-        if session:
-            session.active = True
+        # Set active on the lode
+        lode = next((s for s in self.lodes if s.id == lode_id), None)
+        if lode:
+            lode.active = True
             if tmux_pane:
-                session.tmux_pane = tmux_pane
-            session.touch()
-            save_sessions(self.sessions)
-            self.broadcast({"type": "session_updated", "session": session.to_dict()})
+                lode.tmux_pane = tmux_pane
+            lode.touch()
+            save_lodes(self.lodes)
+            self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
 
-        logger.debug(f"Registered client for session {session_id[:8]}, active=True")
+        logger.debug(f"Registered client for lode {lode_id[:8]}, active=True")
 
     def _handle_message(self, message: dict, conn: socket.socket) -> None:
         """Handle an incoming message, responding directly if needed."""
         msg_type = message.get("type")
 
         if msg_type == "connect":
-            # Read-only handshake: returns session data without claiming ownership
-            session_id = message.get("session_id")
+            # Read-only handshake: returns lode data without claiming ownership
+            lode_id = message.get("lode_id")
             response: dict = {
                 "type": "connected",
                 "tmux": self.tmux_location,
             }
-            if session_id:
-                session = next((s for s in self.sessions if s.id == session_id), None)
-                response["session"] = session.to_dict() if session else None
-                response["session_found"] = session is not None
+            if lode_id:
+                lode = next((s for s in self.lodes if s.id == lode_id), None)
+                response["lode"] = lode.to_dict() if lode else None
+                response["lode_found"] = lode is not None
 
             self._send_response(conn, response)
 
-        elif msg_type == "session_register":
-            # Persistent connection claims ownership of a session (sets active=True)
-            session_id = message.get("session_id")
-            if session_id:
-                session = next((s for s in self.sessions if s.id == session_id), None)
-                if session:
+        elif msg_type == "lode_register":
+            # Persistent connection claims ownership of a lode (sets active=True)
+            lode_id = message.get("lode_id")
+            if lode_id:
+                lode = next((s for s in self.lodes if s.id == lode_id), None)
+                if lode:
                     tmux_pane = message.get("tmux_pane")
-                    self._register_session_client(session_id, conn, tmux_pane)
+                    self._register_lode_client(lode_id, conn, tmux_pane)
 
         elif msg_type == "ping":
             self._send_response(conn, {"type": "pong"})
 
-        elif msg_type == "session_list":
-            sessions_data = [s.to_dict() for s in self.sessions]
-            self._send_response(conn, {"type": "session_list", "sessions": sessions_data})
+        elif msg_type == "lode_list":
+            lodes_data = [s.to_dict() for s in self.lodes]
+            self._send_response(conn, {"type": "lode_list", "lodes": lodes_data})
 
-        elif msg_type == "session_create":
+        elif msg_type == "lode_create":
             project = message.get("project", "")
-            session = create_session(self.sessions, project)
-            self.broadcast({"type": "session_created", "session": session.to_dict()})
+            lode = create_lode(self.lodes, project)
+            self.broadcast({"type": "lode_created", "lode": lode.to_dict()})
 
-        elif msg_type == "session_update":
-            session_id = message.get("session_id")
+        elif msg_type == "lode_update":
+            lode_id = message.get("lode_id")
             stage = message.get("stage")
-            if session_id and stage:
-                session = update_session_stage(self.sessions, session_id, stage)
-                if session:
-                    self.broadcast({"type": "session_updated", "session": session.to_dict()})
+            if lode_id and stage:
+                lode = update_lode_stage(self.lodes, lode_id, stage)
+                if lode:
+                    self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
 
-        elif msg_type == "session_archive":
-            session_id = message.get("session_id")
-            if session_id:
-                session = archive_session(self.sessions, session_id)
-                if session:
-                    self.broadcast({"type": "session_archived", "session": session.to_dict()})
+        elif msg_type == "lode_archive":
+            lode_id = message.get("lode_id")
+            if lode_id:
+                lode = archive_lode(self.lodes, lode_id)
+                if lode:
+                    self.broadcast({"type": "lode_archived", "lode": lode.to_dict()})
 
-        elif msg_type == "session_set_state":
-            session_id = message.get("session_id")
+        elif msg_type == "lode_set_state":
+            lode_id = message.get("lode_id")
             state = message.get("state")
             status = message.get("status", "")
-            if session_id and state:
-                session = update_session_state(self.sessions, session_id, state, status)
-                if session:
-                    self.broadcast({"type": "session_state_changed", "session": session.to_dict()})
+            if lode_id and state:
+                lode = update_lode_state(self.lodes, lode_id, state, status)
+                if lode:
+                    self.broadcast({"type": "lode_state_changed", "lode": lode.to_dict()})
 
-        elif msg_type == "session_set_status":
-            session_id = message.get("session_id")
+        elif msg_type == "lode_set_status":
+            lode_id = message.get("lode_id")
             status = message.get("status", "")
-            if session_id:
-                session = update_session_status(self.sessions, session_id, status)
-                if session:
-                    self.broadcast({"type": "session_status_changed", "session": session.to_dict()})
+            if lode_id:
+                lode = update_lode_status(self.lodes, lode_id, status)
+                if lode:
+                    self.broadcast({"type": "lode_status_changed", "lode": lode.to_dict()})
 
-        elif msg_type == "session_set_codex_thread":
-            session_id = message.get("session_id")
+        elif msg_type == "lode_set_codex_thread":
+            lode_id = message.get("lode_id")
             thread_id = message.get("codex_thread_id")
-            if session_id and thread_id:
-                session = next((s for s in self.sessions if s.id == session_id), None)
-                if session:
-                    session.codex_thread_id = thread_id
-                    session.touch()
-                    save_sessions(self.sessions)
-                    self.broadcast({"type": "session_updated", "session": session.to_dict()})
+            if lode_id and thread_id:
+                lode = next((s for s in self.lodes if s.id == lode_id), None)
+                if lode:
+                    lode.codex_thread_id = thread_id
+                    lode.touch()
+                    save_lodes(self.lodes)
+                    self.broadcast({"type": "lode_updated", "lode": lode.to_dict()})
 
         elif msg_type == "backlog_list":
             items_data = [item.to_dict() for item in self.backlog]
@@ -313,9 +313,9 @@ class Server:
         elif msg_type == "backlog_add":
             project = message.get("project", "")
             description = message.get("description", "")
-            session_id = message.get("session_id")
+            lode_id = message.get("lode_id")
             if project and description:
-                item = add_backlog_item(self.backlog, project, description, session_id)
+                item = add_backlog_item(self.backlog, project, description, lode_id)
                 self.broadcast({"type": "backlog_added", "item": item.to_dict()})
 
         elif msg_type == "backlog_remove":

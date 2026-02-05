@@ -18,18 +18,18 @@ from textual.widgets.option_list import Option
 from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item, update_backlog_item
 from hopper.claude import spawn_claude, switch_to_pane
 from hopper.git import get_diff_stat
-from hopper.projects import Project, find_project, get_active_projects
-from hopper.sessions import (
-    Session,
-    archive_session,
-    create_session,
+from hopper.lodes import (
+    Lode,
+    archive_lode,
+    create_lode,
     format_age,
     format_uptime,
-    get_session_dir,
-    save_sessions,
-    update_session_stage,
-    update_session_state,
+    get_lode_dir,
+    save_lodes,
+    update_lode_stage,
+    update_lode_state,
 )
+from hopper.projects import Project, find_project, get_active_projects
 
 # Claude Code-inspired theme
 # Colors derived from Claude Code's terminal UI (ANSI bright colors)
@@ -59,7 +59,7 @@ STATUS_NEW = "○"  # empty circle
 STATUS_ERROR = "✗"  # x mark
 
 # Hint row keys (always present at bottom of each table)
-HINT_SESSION = "_hint_session"
+HINT_LODE = "_hint_lode"
 HINT_BACKLOG = "_hint_backlog"
 
 # Stage indicators
@@ -90,33 +90,33 @@ class Row:
     status_text: str = ""  # Human-readable status text
 
 
-def session_to_row(session: Session) -> Row:
-    """Convert a session to a display row."""
-    if session.state == "new":
+def lode_to_row(lode: Lode) -> Row:
+    """Convert a lode to a display row."""
+    if lode.state == "new":
         status = STATUS_NEW
-    elif session.state == "error":
+    elif lode.state == "error":
         status = STATUS_ERROR
-    elif session.state == "stuck":
+    elif lode.state == "stuck":
         status = STATUS_STUCK
     else:
         status = STATUS_RUNNING
 
-    if session.stage == "ore":
+    if lode.stage == "ore":
         stage = STAGE_ORE
-    elif session.stage == "ship":
+    elif lode.stage == "ship":
         stage = STAGE_SHIP
     else:
         stage = STAGE_PROCESSING
 
     return Row(
-        id=session.id,
-        short_id=session.short_id,
+        id=lode.id,
+        short_id=lode.short_id,
         stage=stage,
-        age=format_age(session.created_at),
+        age=format_age(lode.created_at),
         status=status,
-        active=session.active,
-        project=session.project,
-        status_text=session.status,
+        active=lode.active,
+        project=lode.project,
+        status_text=lode.status,
     )
 
 
@@ -587,8 +587,8 @@ class LegendScreen(ModalScreen):
         self.dismiss()
 
 
-class SessionTable(DataTable):
-    """Table displaying all sessions.
+class LodeTable(DataTable):
+    """Table displaying all lodes.
 
     IMPORTANT: Never use table.clear() to refresh data -- it resets cursor
     position. Use update_cell() for existing rows, add_row()/remove_row()
@@ -695,12 +695,12 @@ class HopperApp(App):
         background: $surface;
     }
 
-    #session-panel {
+    #lode-panel {
         height: 1fr;
         margin-top: 1;
     }
 
-    #session-table {
+    #lode-table {
         height: 1fr;
         background: $background;
     }
@@ -740,7 +740,7 @@ class HopperApp(App):
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
         Binding("ctrl+d", "quit", "Quit", show=False, priority=True),
-        Binding("c", "new_session", "Create"),
+        Binding("c", "new_lode", "Create"),
         Binding("b", "new_backlog", "Backlog"),
         Binding("a", "archive", "Archive"),
         Binding("d", "delete_backlog", "Delete", show=False),
@@ -750,7 +750,7 @@ class HopperApp(App):
     def __init__(self, server=None):
         super().__init__()
         self.server = server
-        self._sessions: list[Session] = server.sessions if server else []
+        self._lodes: list[Lode] = server.lodes if server else []
         self._backlog: list[BacklogItem] = server.backlog if server else []
         self._projects: list[Project] = []
         self._git_hash: str = server.git_hash if server and server.git_hash else ""
@@ -760,9 +760,9 @@ class HopperApp(App):
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
         yield Header()
-        with Vertical(id="session-panel", classes="section"):
-            yield Static("sessions", classes="section-label")
-            yield SessionTable(id="session-table")
+        with Vertical(id="lode-panel", classes="section"):
+            yield Static("lodes", classes="section-label")
+            yield LodeTable(id="lode-table")
         with Vertical(id="backlog-panel", classes="section"):
             yield Static("backlog", classes="section-label")
             yield BacklogTable(id="backlog-table")
@@ -779,11 +779,11 @@ class HopperApp(App):
         self.refresh_backlog()
         # Start polling for server updates
         self.set_interval(1.0, self.check_server_updates)
-        # Focus the session table
-        self.query_one("#session-table", SessionTable).focus()
+        # Focus the lode table
+        self.query_one("#lode-table", LodeTable).focus()
 
     def check_server_updates(self) -> None:
-        """Poll server's session list and refresh if needed."""
+        """Poll server's lode list and refresh if needed."""
         self._update_sub_title()
         self.refresh_table()
         self.refresh_backlog()
@@ -803,13 +803,13 @@ class HopperApp(App):
         Uses Textual's update_cell() for existing rows instead of clear()+add_row()
         which would reset cursor position on every refresh.
         """
-        table = self.query_one("#session-table", SessionTable)
+        table = self.query_one("#lode-table", LodeTable)
 
-        # Build rows from sessions (ore first, then processing, then ship)
+        # Build rows from lodes (ore first, then processing, then ship)
         stage_order = {"ore": 0, "processing": 1, "ship": 2}
         rows = [
-            session_to_row(s)
-            for s in sorted(self._sessions, key=lambda s: stage_order.get(s.stage, 3))
+            lode_to_row(s)
+            for s in sorted(self._lodes, key=lambda s: stage_order.get(s.stage, 3))
             if s.stage in stage_order
         ]
 
@@ -817,13 +817,13 @@ class HopperApp(App):
         existing_keys: set[str] = set()
         for row_key in table.rows:
             key = str(row_key.value)
-            if key != HINT_SESSION:
+            if key != HINT_LODE:
                 existing_keys.add(key)
 
         # Get desired row keys
         desired_keys = {row.id for row in rows}
 
-        has_hint = HINT_SESSION in {str(k.value) for k in table.rows}
+        has_hint = HINT_LODE in {str(k.value) for k in table.rows}
 
         # Remove rows that no longer exist
         for key in existing_keys - desired_keys:
@@ -833,21 +833,21 @@ class HopperApp(App):
         for row in rows:
             if row.id in existing_keys:
                 # Update existing row cells
-                table.update_cell(row.id, SessionTable.COL_STATUS, format_status_text(row.status))
-                table.update_cell(row.id, SessionTable.COL_ACTIVE, format_active_text(row.active))
-                table.update_cell(row.id, SessionTable.COL_STAGE, format_stage_text(row.stage))
-                table.update_cell(row.id, SessionTable.COL_ID, row.short_id)
-                table.update_cell(row.id, SessionTable.COL_PROJECT, row.project)
-                table.update_cell(row.id, SessionTable.COL_AGE, row.age)
+                table.update_cell(row.id, LodeTable.COL_STATUS, format_status_text(row.status))
+                table.update_cell(row.id, LodeTable.COL_ACTIVE, format_active_text(row.active))
+                table.update_cell(row.id, LodeTable.COL_STAGE, format_stage_text(row.stage))
+                table.update_cell(row.id, LodeTable.COL_ID, row.short_id)
+                table.update_cell(row.id, LodeTable.COL_PROJECT, row.project)
+                table.update_cell(row.id, LodeTable.COL_AGE, row.age)
                 table.update_cell(
                     row.id,
-                    SessionTable.COL_STATUS_TEXT,
+                    LodeTable.COL_STATUS_TEXT,
                     format_status_label(row.status_text, row.status),
                 )
             else:
                 # Add new row (before hint if present)
                 if has_hint:
-                    table.remove_row(HINT_SESSION)
+                    table.remove_row(HINT_LODE)
                     has_hint = False
                 table.add_row(
                     format_status_text(row.status),
@@ -862,8 +862,8 @@ class HopperApp(App):
 
         # Add hint row at the bottom if not already there
         if not has_hint:
-            hint = Text("c to create new session", style="bright_black italic")
-            table.add_row("", "", "", "", "", "", hint, key=HINT_SESSION)
+            hint = Text("c to create new lode", style="bright_black italic")
+            table.add_row("", "", "", "", "", "", hint, key=HINT_LODE)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""
@@ -909,9 +909,9 @@ class HopperApp(App):
             return str(cell_key.row_key.value) if cell_key.row_key else None
         return None
 
-    def _get_selected_session_id(self) -> str | None:
-        """Get the session ID of the selected row (skips hint rows)."""
-        key = self._get_selected_row_key(self.query_one("#session-table", SessionTable))
+    def _get_selected_lode_id(self) -> str | None:
+        """Get the lode ID of the selected row (skips hint rows)."""
+        key = self._get_selected_row_key(self.query_one("#lode-table", LodeTable))
         if key and key.startswith("_hint"):
             return None
         return key
@@ -930,11 +930,11 @@ class HopperApp(App):
                 return item
         return None
 
-    def _get_session(self, session_id: str) -> Session | None:
-        """Get a session by ID."""
-        for session in self._sessions:
-            if session.id == session_id:
-                return session
+    def _get_lode(self, lode_id: str) -> Lode | None:
+        """Get a lode by ID."""
+        for lode in self._lodes:
+            if lode.id == lode_id:
+                return lode
         return None
 
     def _require_projects(self) -> bool:
@@ -944,8 +944,8 @@ class HopperApp(App):
             return False
         return True
 
-    def action_new_session(self) -> None:
-        """Open project picker, then scope input, to create a new session."""
+    def action_new_lode(self) -> None:
+        """Open project picker, then scope input, to create a new lode."""
         if not self._require_projects():
             return
 
@@ -957,8 +957,8 @@ class HopperApp(App):
                 if result is None:
                     return  # Cancelled
                 scope, foreground = result
-                session = create_session(self._sessions, project.name, scope)
-                spawn_claude(session.id, project.path, foreground)
+                lode = create_lode(self._lodes, project.name, scope)
+                spawn_claude(lode.id, project.path, foreground)
                 self.refresh_table()
 
             self.push_screen(ScopeInputScreen(), on_scope_entered)
@@ -989,8 +989,8 @@ class HopperApp(App):
         key = str(event.row_key.value)
 
         # Hint row actions
-        if key == HINT_SESSION:
-            self.action_new_session()
+        if key == HINT_LODE:
+            self.action_new_lode()
             return
         if key == HINT_BACKLOG:
             self.action_new_backlog()
@@ -1000,15 +1000,15 @@ class HopperApp(App):
             self._edit_backlog_item(key)
             return
 
-        if not isinstance(event.data_table, SessionTable):
+        if not isinstance(event.data_table, LodeTable):
             return
 
-        session = self._get_session(key)
-        if not session:
-            self.notify(f"Session {key[:8]} not found", severity="error")
+        lode = self._get_lode(key)
+        if not lode:
+            self.notify(f"Lode {key[:8]} not found", severity="error")
             return
 
-        project = find_project(session.project) if session.project else None
+        project = find_project(lode.project) if lode.project else None
         project_path = project.path if project else None
 
         # Check if project directory still exists
@@ -1016,33 +1016,33 @@ class HopperApp(App):
             self.notify(f"Project dir missing: {project_path}", severity="error")
             return
 
-        if session.active and session.tmux_pane:
-            # Session has a connected runner - switch to its window
-            if not switch_to_pane(session.tmux_pane):
+        if lode.active and lode.tmux_pane:
+            # Lode has a connected runner - switch to its window
+            if not switch_to_pane(lode.tmux_pane):
                 self.notify("Failed to switch to window", severity="error")
-        elif session.stage == "processing" and session.state == "ready":
+        elif lode.stage == "processing" and lode.state == "ready":
             # Shovel complete, ready for processing - review before starting
-            self._review_shovel(session, project_path)
-        elif session.stage == "ship" and session.state == "ready":
+            self._review_shovel(lode, project_path)
+        elif lode.stage == "ship" and lode.state == "ready":
             # Refine complete, ready to ship - review changes before shipping
-            self._review_ship(session, project_path)
+            self._review_ship(lode, project_path)
         else:
-            # Session is not active - spawn runner based on stage
-            if not spawn_claude(session.id, project_path, stage=session.stage):
+            # Lode is not active - spawn runner based on stage
+            if not spawn_claude(lode.id, project_path, stage=lode.stage):
                 self.notify("Failed to spawn tmux window", severity="error")
 
         self.refresh_table()
 
     def action_archive(self) -> None:
-        """Archive the selected session (session table only)."""
-        if not isinstance(self.focused, SessionTable):
+        """Archive the selected lode (lode table only)."""
+        if not isinstance(self.focused, LodeTable):
             return
 
-        session_id = self._get_selected_session_id()
-        if not session_id:
+        lode_id = self._get_selected_lode_id()
+        if not lode_id:
             return
 
-        archive_session(self._sessions, session_id)
+        archive_lode(self._lodes, lode_id)
         self.refresh_table()
 
     def action_legend(self) -> None:
@@ -1065,19 +1065,19 @@ class HopperApp(App):
             elif action == "promote":
                 project = find_project(item.project)
                 project_path = project.path if project else None
-                session = create_session(self._sessions, item.project, text)
-                session.backlog = item.to_dict()
-                save_sessions(self._sessions)
-                spawn_claude(session.id, project_path, foreground=False)
+                lode = create_lode(self._lodes, item.project, text)
+                lode.backlog = item.to_dict()
+                save_lodes(self._lodes)
+                spawn_claude(lode.id, project_path, foreground=False)
                 remove_backlog_item(self._backlog, item_id)
                 self.refresh_table()
                 self.refresh_backlog()
 
         self.push_screen(BacklogEditScreen(initial_text=item.description), on_edit_result)
 
-    def _review_shovel(self, session: Session, project_path: str | None) -> None:
-        """Open the shovel review modal for a processing-ready session."""
-        shovel_path = get_session_dir(session.id) / "shovel.md"
+    def _review_shovel(self, lode: Lode, project_path: str | None) -> None:
+        """Open the shovel review modal for a processing-ready lode."""
+        shovel_path = get_lode_dir(lode.id) / "shovel.md"
         if not shovel_path.exists():
             self.notify("Shovel prompt not found", severity="error")
             return
@@ -1093,14 +1093,14 @@ class HopperApp(App):
             tmp_path.write_text(text)
             os.replace(tmp_path, shovel_path)
             if action == "process":
-                spawn_claude(session.id, project_path, foreground=False, stage="processing")
+                spawn_claude(lode.id, project_path, foreground=False, stage="processing")
             self.refresh_table()
 
         self.push_screen(ShovelReviewScreen(initial_text=shovel_text), on_review_result)
 
-    def _review_ship(self, session: Session, project_path: str | None) -> None:
-        """Open the ship review modal for a ship-ready session."""
-        worktree_path = get_session_dir(session.id) / "worktree"
+    def _review_ship(self, lode: Lode, project_path: str | None) -> None:
+        """Open the ship review modal for a ship-ready lode."""
+        worktree_path = get_lode_dir(lode.id) / "worktree"
         if not worktree_path.is_dir():
             self.notify("Worktree not found", severity="error")
             return
@@ -1111,12 +1111,12 @@ class HopperApp(App):
             if result is None:
                 return  # Cancelled
             if result == "ship":
-                spawn_claude(session.id, project_path, foreground=False, stage="ship")
+                spawn_claude(lode.id, project_path, foreground=False, stage="ship")
             elif result == "refine":
                 # Change stage back to processing and resume refine
-                update_session_stage(self._sessions, session.id, "processing")
-                update_session_state(self._sessions, session.id, "running", "Resuming refine")
-                spawn_claude(session.id, project_path, foreground=False, stage="processing")
+                update_lode_stage(self._lodes, lode.id, "processing")
+                update_lode_state(self._lodes, lode.id, "running", "Resuming refine")
+                spawn_claude(lode.id, project_path, foreground=False, stage="processing")
             self.refresh_table()
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)
@@ -1139,7 +1139,7 @@ def run_tui(server=None) -> int:
     """Run the TUI application.
 
     Args:
-        server: Optional Server instance for shared session state.
+        server: Optional Server instance for shared lode state.
 
     Returns:
         Exit code (0 for success).

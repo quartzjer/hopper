@@ -9,8 +9,8 @@ import threading
 from pathlib import Path
 
 from hopper.client import HopperConnection, connect
+from hopper.lodes import SHORT_ID_LEN, current_time_ms
 from hopper.projects import find_project
-from hopper.sessions import SHORT_ID_LEN, current_time_ms
 from hopper.tmux import capture_pane, get_current_pane_id, rename_window, send_keys
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def extract_error_message(stderr_bytes: bytes) -> str | None:
 
 
 class BaseRunner:
-    """Base class for session runners (ore, refine).
+    """Base class for lode runners (ore, refine).
 
     Provides the full run lifecycle: signal handling, server communication,
     subprocess management, activity monitoring, completion detection, and
@@ -60,8 +60,8 @@ class BaseRunner:
     _next_stage: str = ""
     _always_dismiss: bool = False
 
-    def __init__(self, session_id: str, socket_path: Path):
-        self.session_id = session_id
+    def __init__(self, lode_id: str, socket_path: Path):
+        self.lode_id = lode_id
         self.socket_path = socket_path
         self.connection: HopperConnection | None = None
         self.is_first_run = False
@@ -77,32 +77,32 @@ class BaseRunner:
         self._done = threading.Event()
 
     def run(self) -> int:
-        """Run Claude for this session. Returns exit code."""
+        """Run Claude for this lode. Returns exit code."""
         original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
         original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
 
         try:
-            # Query server for session state and project info
-            sid = self.session_id[:SHORT_ID_LEN]
-            response = connect(self.socket_path, session_id=self.session_id)
+            # Query server for lode state and project info
+            sid = self.lode_id[:SHORT_ID_LEN]
+            response = connect(self.socket_path, lode_id=self.lode_id)
             if not response:
-                print(f"Failed to connect to server for session {sid}")
+                print(f"Failed to connect to server for lode {sid}")
                 return 1
 
-            session_data = response.get("session")
-            if not session_data:
-                print(f"Session {sid} not found")
+            lode_data = response.get("lode")
+            if not lode_data:
+                print(f"Lode {sid} not found")
                 return 1
 
-            if session_data.get("active", False):
-                logger.error(f"Session {sid} already has an active connection")
-                print(f"Session {sid} is already active")
+            if lode_data.get("active", False):
+                logger.error(f"Lode {sid} already has an active connection")
+                print(f"Lode {sid} is already active")
                 return 1
 
-            state = session_data.get("state")
+            state = lode_data.get("state")
             self.is_first_run = state == self._first_run_state
 
-            project_name = session_data.get("project", "")
+            project_name = lode_data.get("project", "")
             if project_name:
                 self.project_name = project_name
                 project = find_project(project_name)
@@ -110,7 +110,7 @@ class BaseRunner:
                     self.project_dir = project.path
 
             # Let subclass extract additional data
-            self._load_session_data(session_data)
+            self._load_lode_data(lode_data)
 
             # Subclass pre-flight validation and setup
             err = self._setup()
@@ -122,8 +122,8 @@ class BaseRunner:
             self.connection.start(
                 callback=self._on_server_message,
                 on_connect=lambda: self.connection.emit(
-                    "session_register",
-                    session_id=self.session_id,
+                    "lode_register",
+                    lode_id=self.lode_id,
                     tmux_pane=get_current_pane_id(),
                 ),
             )
@@ -150,8 +150,8 @@ class BaseRunner:
             if self.connection:
                 self.connection.stop()
 
-    def _load_session_data(self, session_data: dict) -> None:
-        """Extract additional fields from session data. Override in subclasses."""
+    def _load_lode_data(self, lode_data: dict) -> None:
+        """Extract additional fields from lode data. Override in subclasses."""
         pass
 
     def _setup(self) -> int | None:
@@ -169,7 +169,7 @@ class BaseRunner:
     def _get_subprocess_env(self) -> dict:
         """Build environment for subprocess. Subclasses can override to add venv."""
         env = os.environ.copy()
-        env["HOPPER_SID"] = self.session_id
+        env["HOPPER_LID"] = self.lode_id
         return env
 
     def _run_claude(self) -> tuple[int, str | None]:
@@ -220,8 +220,8 @@ class BaseRunner:
         """Emit state change to server via persistent connection."""
         if self.connection:
             self.connection.emit(
-                "session_set_state",
-                session_id=self.session_id,
+                "lode_set_state",
+                lode_id=self.lode_id,
                 state=state,
                 status=status,
             )
@@ -231,20 +231,20 @@ class BaseRunner:
         """Emit stage change to server via persistent connection."""
         if self.connection:
             self.connection.emit(
-                "session_update",
-                session_id=self.session_id,
+                "lode_update",
+                lode_id=self.lode_id,
                 stage=stage,
             )
             logger.debug(f"Emitted stage: {stage}")
 
     def _on_server_message(self, message: dict) -> None:
         """Handle incoming server broadcast messages."""
-        if message.get("type") != "session_state_changed":
+        if message.get("type") != "lode_state_changed":
             return
-        session = message.get("session", {})
-        if session.get("id") != self.session_id:
+        lode = message.get("lode", {})
+        if lode.get("id") != self.lode_id:
             return
-        if session.get("state") == "completed":
+        if lode.get("state") == "completed":
             self._done.set()
             logger.debug(f"{self._done_label} signal received")
 
@@ -283,7 +283,7 @@ class BaseRunner:
             logger.debug("Not in tmux, skipping activity monitor")
             return
 
-        rename_window(self._pane_id, self.session_id[:SHORT_ID_LEN])
+        rename_window(self._pane_id, self.lode_id[:SHORT_ID_LEN])
         self._monitor_stop.clear()
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, name="activity-monitor", daemon=True

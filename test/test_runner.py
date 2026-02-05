@@ -71,7 +71,7 @@ class TestBaseRunnerActivityMonitor:
 
         assert runner._stuck_since is not None
         stuck_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "stuck"
+            e for e in emitted if e[0] == "lode_set_state" and e[1]["state"] == "stuck"
         ]
         assert len(stuck_emissions) == 1
         assert "5s" in stuck_emissions[0][1]["status"]
@@ -92,7 +92,7 @@ class TestBaseRunnerActivityMonitor:
             runner._check_activity()
 
         assert runner._stuck_since is None
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "stuck" for e in emitted)
+        assert not any(e[0] == "lode_set_state" and e[1]["state"] == "stuck" for e in emitted)
         assert runner._last_snapshot == "Hello World 2"
 
     def test_check_activity_recovers_from_stuck(self):
@@ -113,7 +113,7 @@ class TestBaseRunnerActivityMonitor:
 
         assert runner._stuck_since is None
         assert any(
-            e[0] == "session_set_state"
+            e[0] == "lode_set_state"
             and e[1]["state"] == "running"
             and e[1]["status"] == "Claude running"
             for e in emitted
@@ -172,7 +172,7 @@ class TestBaseRunnerActivityMonitor:
         with patch("hopper.runner.capture_pane", return_value="Hello World"):
             runner._check_activity()
 
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "stuck" for e in emitted)
+        assert not any(e[0] == "lode_set_state" and e[1]["state"] == "stuck" for e in emitted)
 
 
 class TestBaseRunnerServerMessages:
@@ -183,20 +183,20 @@ class TestBaseRunnerServerMessages:
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
 
         msg = {
-            "type": "session_state_changed",
-            "session": {"id": "test-session", "state": "completed"},
+            "type": "lode_state_changed",
+            "lode": {"id": "test-session", "state": "completed"},
         }
         runner._on_server_message(msg)
 
         assert runner._done.is_set()
 
-    def test_on_server_message_ignores_other_sessions(self):
+    def test_on_server_message_ignores_other_lodes(self):
         """Callback ignores messages for other sessions."""
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
 
         msg = {
-            "type": "session_state_changed",
-            "session": {"id": "other-session", "state": "completed"},
+            "type": "lode_state_changed",
+            "lode": {"id": "other-session", "state": "completed"},
         }
         runner._on_server_message(msg)
 
@@ -207,8 +207,8 @@ class TestBaseRunnerServerMessages:
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
 
         msg = {
-            "type": "session_state_changed",
-            "session": {"id": "test-session", "state": "running"},
+            "type": "lode_state_changed",
+            "lode": {"id": "test-session", "state": "running"},
         }
         runner._on_server_message(msg)
 
@@ -219,8 +219,8 @@ class TestBaseRunnerServerMessages:
         runner = BaseRunner("test-session", Path("/tmp/test.sock"))
 
         msg = {
-            "type": "session_updated",
-            "session": {"id": "test-session", "state": "completed"},
+            "type": "lode_updated",
+            "lode": {"id": "test-session", "state": "completed"},
         }
         runner._on_server_message(msg)
 

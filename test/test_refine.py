@@ -8,15 +8,15 @@ from hopper.refine import RefineRunner, run_refine
 
 
 class TestRefineRunner:
-    def _make_runner(self, session_id="test-session-id"):
-        return RefineRunner(session_id, Path("/tmp/test.sock"))
+    def _make_runner(self, lode_id="test-session-id"):
+        return RefineRunner(lode_id, Path("/tmp/test.sock"))
 
     def _mock_response(self, state="ready", active=False, project="my-project", stage="processing"):
         return {
             "type": "connected",
             "tmux": None,
-            "session": {"state": state, "active": active, "project": project, "stage": stage},
-            "session_found": True,
+            "lode": {"state": state, "active": active, "project": project, "stage": stage},
+            "lode_found": True,
         }
 
     def _mock_conn(self, emitted=None):
@@ -34,7 +34,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "shovel.md").write_text("Build the widget")
 
@@ -55,7 +55,7 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="loaded prompt"),
             patch(
@@ -89,7 +89,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         worktree = session_dir / "worktree"
         worktree.mkdir()
@@ -105,7 +105,7 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree") as mock_wt,
             patch("hopper.refine.bootstrap_codex") as mock_boot,
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -133,7 +133,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "shovel.md").write_text("Build the widget")
 
@@ -143,7 +143,7 @@ class TestRefineRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="task prompt"),
             patch("hopper.refine.bootstrap_codex", return_value=(1, None)),
@@ -160,7 +160,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "shovel.md").write_text("Build the widget")
 
@@ -170,7 +170,7 @@ class TestRefineRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="task prompt"),
             patch("hopper.refine.bootstrap_codex", return_value=(127, None)),
@@ -187,7 +187,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
         (session_dir / "shovel.md").write_text("Build the widget")
 
@@ -197,7 +197,7 @@ class TestRefineRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="task prompt"),
             patch("hopper.refine.bootstrap_codex", return_value=(0, None)),
@@ -248,7 +248,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
 
         mock_project = MagicMock()
@@ -257,7 +257,7 @@ class TestRefineRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=False),
         ):
             exit_code = runner.run()
@@ -271,7 +271,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         session_dir.mkdir(parents=True)
 
         mock_project = MagicMock()
@@ -280,7 +280,7 @@ class TestRefineRunner:
         with (
             patch("hopper.runner.connect", return_value=self._mock_response()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
         ):
             exit_code = runner.run()
@@ -295,7 +295,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -310,7 +310,7 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
@@ -318,7 +318,7 @@ class TestRefineRunner:
 
         assert exit_code == 1
         error_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "error"
+            e for e in emitted if e[0] == "lode_set_state" and e[1]["state"] == "error"
         ]
         assert len(error_emissions) == 1
         assert "Something broke" in error_emissions[0][1]["status"]
@@ -331,7 +331,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -346,14 +346,14 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
         assert exit_code == 0
-        assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
+        assert any(e[0] == "lode_set_state" and e[1]["state"] == "running" for e in emitted)
 
     def test_handles_missing_claude(self, tmp_path):
         """Runner returns 127 if claude command not found."""
@@ -363,7 +363,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -374,7 +374,7 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn(emitted)),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", side_effect=FileNotFoundError),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
@@ -382,7 +382,7 @@ class TestRefineRunner:
 
         assert exit_code == 127
         assert any(
-            e[0] == "session_set_state" and e[1]["status"] == "claude command not found"
+            e[0] == "lode_set_state" and e[1]["status"] == "claude command not found"
             for e in emitted
         )
 
@@ -394,7 +394,7 @@ class TestRefineRunner:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -409,7 +409,7 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
@@ -418,14 +418,14 @@ class TestRefineRunner:
         mock_conn.start.assert_called_once()
         mock_conn.stop.assert_called_once()
 
-    def test_sets_hopper_sid_env(self, tmp_path):
-        """Runner sets HOPPER_SID environment variable."""
+    def test_sets_hopper_lid_env(self, tmp_path):
+        """Runner sets HOPPER_LID environment variable."""
         runner = self._make_runner()
 
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session-id"
+        session_dir = tmp_path / "lodes" / "test-session-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -440,14 +440,14 @@ class TestRefineRunner:
             patch("hopper.runner.connect", return_value=self._mock_response(state="running")),
             patch("hopper.runner.HopperConnection", return_value=self._mock_conn()),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             runner.run()
 
         env = mock_popen.call_args[1]["env"]
-        assert env["HOPPER_SID"] == "test-session-id"
+        assert env["HOPPER_LID"] == "test-session-id"
 
 
 class TestRunRefine:
@@ -456,7 +456,7 @@ class TestRunRefine:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-id"
+        session_dir = tmp_path / "lodes" / "test-id"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -473,15 +473,15 @@ class TestRunRefine:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "project": "my-project", "stage": "processing"},
-            "session_found": True,
+            "lode": {"state": "running", "project": "my-project", "stage": "processing"},
+            "lode_found": True,
         }
 
         with (
             patch("hopper.runner.connect", return_value=mock_response),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
@@ -501,7 +501,7 @@ class TestRefineCompletion:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session"
+        session_dir = tmp_path / "lodes" / "test-session"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
         (session_dir / "shovel.md").write_text("Build it")
@@ -522,13 +522,13 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "session": {"state": "ready", "project": "my-project", "stage": "processing"},
-                    "session_found": True,
+                    "lode": {"state": "ready", "project": "my-project", "stage": "processing"},
+                    "lode_found": True,
                 },
             ),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("hopper.refine.create_worktree", return_value=True),
             patch("hopper.refine.prompt.load", return_value="prompt"),
             patch("hopper.refine.bootstrap_codex", return_value=(0, "thread-123")),
@@ -543,10 +543,10 @@ class TestRefineCompletion:
         state_idx = next(
             i
             for i, e in enumerate(emitted)
-            if e[0] == "session_set_state" and e[1]["state"] == "ready"
+            if e[0] == "lode_set_state" and e[1]["state"] == "ready"
         )
         stage_idx = next(
-            i for i, e in enumerate(emitted) if e[0] == "session_update" and e[1]["stage"] == "ship"
+            i for i, e in enumerate(emitted) if e[0] == "lode_update" and e[1]["stage"] == "ship"
         )
         assert state_idx < stage_idx
         assert "Refine complete" in emitted[state_idx][1]["status"]
@@ -559,7 +559,7 @@ class TestRefineCompletion:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        session_dir = tmp_path / "sessions" / "test-session"
+        session_dir = tmp_path / "lodes" / "test-session"
         worktree = session_dir / "worktree"
         worktree.mkdir(parents=True)
 
@@ -579,18 +579,18 @@ class TestRefineCompletion:
                 return_value={
                     "type": "connected",
                     "tmux": None,
-                    "session": {"state": "running", "project": "my-project", "stage": "processing"},
-                    "session_found": True,
+                    "lode": {"state": "running", "project": "my-project", "stage": "processing"},
+                    "lode_found": True,
                 },
             ),
             patch("hopper.runner.HopperConnection", return_value=mock_conn),
             patch("hopper.runner.find_project", return_value=mock_project),
-            patch("hopper.refine.get_session_dir", return_value=session_dir),
+            patch("hopper.refine.get_lode_dir", return_value=session_dir),
             patch("subprocess.Popen", return_value=mock_proc),
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             exit_code = runner.run()
 
         assert exit_code == 0
-        assert not any(e[0] == "session_update" for e in emitted)
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "ready" for e in emitted)
+        assert not any(e[0] == "lode_update" for e in emitted)
+        assert not any(e[0] == "lode_set_state" and e[1]["state"] == "ready" for e in emitted)

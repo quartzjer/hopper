@@ -24,8 +24,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -38,7 +38,7 @@ class TestOreRunner:
 
         assert exit_code == 0
         # Should emit running state
-        assert any(e[0] == "session_set_state" and e[1]["state"] == "running" for e in emitted)
+        assert any(e[0] == "lode_set_state" and e[1]["state"] == "running" for e in emitted)
 
     def test_run_bails_if_session_already_active(self):
         """Runner exits with code 1 if session is already active."""
@@ -47,8 +47,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "active": True},
-            "session_found": True,
+            "lode": {"state": "running", "active": True},
+            "lode_found": True,
         }
 
         with patch("hopper.runner.connect", return_value=mock_response):
@@ -72,8 +72,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -86,7 +86,7 @@ class TestOreRunner:
 
         assert exit_code == 1
         assert any(
-            e[0] == "session_set_state"
+            e[0] == "lode_set_state"
             and e[1]["state"] == "error"
             and e[1]["status"] == "Exited with code 1"
             for e in emitted
@@ -108,8 +108,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -123,7 +123,7 @@ class TestOreRunner:
         assert exit_code == 1
         # Find error emission
         error_emissions = [
-            e for e in emitted if e[0] == "session_set_state" and e[1]["state"] == "error"
+            e for e in emitted if e[0] == "lode_set_state" and e[1]["state"] == "error"
         ]
         assert len(error_emissions) == 1
         assert "something went wrong" in error_emissions[0][1]["status"]
@@ -143,8 +143,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -165,9 +165,9 @@ class TestOreRunner:
             "my-session-id",
         ]
 
-        # Check environment includes HOPPER_SID
+        # Check environment includes HOPPER_LID
         env = call_args[1]["env"]
-        assert env["HOPPER_SID"] == "my-session-id"
+        assert env["HOPPER_LID"] == "my-session-id"
 
     def test_run_claude_with_prompt_for_new_session(self):
         """Runner invokes claude with --session-id and prompt for new sessions."""
@@ -183,8 +183,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "new"},
-            "session_found": True,
+            "lode": {"state": "new"},
+            "lode_found": True,
         }
 
         with (
@@ -217,8 +217,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "new"},
-            "session_found": True,
+            "lode": {"state": "new"},
+            "lode_found": True,
         }
 
         with (
@@ -246,8 +246,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -260,7 +260,7 @@ class TestOreRunner:
 
         assert exit_code == 127
         assert any(
-            e[0] == "session_set_state"
+            e[0] == "lode_set_state"
             and e[1]["state"] == "error"
             and e[1]["status"] == "claude command not found"
             for e in emitted
@@ -280,8 +280,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -314,8 +314,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "project": "my-project"},
-            "session_found": True,
+            "lode": {"state": "running", "project": "my-project"},
+            "lode_found": True,
         }
 
         mock_project = MagicMock()
@@ -342,8 +342,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running", "project": "my-project"},
-            "session_found": True,
+            "lode": {"state": "running", "project": "my-project"},
+            "lode_found": True,
         }
 
         # Point to a non-existent directory
@@ -374,8 +374,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},  # No project
-            "session_found": True,
+            "lode": {"state": "running"},  # No project
+            "lode_found": True,
         }
 
         with (
@@ -405,8 +405,8 @@ class TestOreRunner:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "new", "scope": "build the widget"},
-            "session_found": True,
+            "lode": {"state": "new", "scope": "build the widget"},
+            "lode_found": True,
         }
 
         with (
@@ -437,8 +437,8 @@ class TestRunOre:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -472,8 +472,8 @@ class TestShovelWorkflow:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "new"},
-            "session_found": True,
+            "lode": {"state": "new"},
+            "lode_found": True,
         }
 
         with (
@@ -491,12 +491,12 @@ class TestShovelWorkflow:
         state_idx = next(
             i
             for i, e in enumerate(emitted)
-            if e[0] == "session_set_state" and e[1]["state"] == "ready"
+            if e[0] == "lode_set_state" and e[1]["state"] == "ready"
         )
         stage_idx = next(
             i
             for i, e in enumerate(emitted)
-            if e[0] == "session_update" and e[1]["stage"] == "processing"
+            if e[0] == "lode_update" and e[1]["stage"] == "processing"
         )
         assert state_idx < stage_idx
         assert "Shovel-ready" in emitted[state_idx][1]["status"]
@@ -517,8 +517,8 @@ class TestShovelWorkflow:
         mock_response = {
             "type": "connected",
             "tmux": None,
-            "session": {"state": "running"},
-            "session_found": True,
+            "lode": {"state": "running"},
+            "lode_found": True,
         }
 
         with (
@@ -531,5 +531,5 @@ class TestShovelWorkflow:
 
         assert exit_code == 0
         # Should NOT emit stage transition or ready state
-        assert not any(e[0] == "session_update" for e in emitted)
-        assert not any(e[0] == "session_set_state" and e[1]["state"] == "ready" for e in emitted)
+        assert not any(e[0] == "lode_update" for e in emitted)
+        assert not any(e[0] == "lode_set_state" and e[1]["state"] == "ready" for e in emitted)

@@ -124,24 +124,24 @@ def require_projects() -> int | None:
     return None
 
 
-def validate_hopper_sid() -> int | None:
-    """Validate HOPPER_SID if set. Returns exit code on failure, None on success."""
-    from hopper.client import session_exists
+def validate_hopper_lid() -> int | None:
+    """Validate HOPPER_LID if set. Returns exit code on failure, None on success."""
+    from hopper.client import lode_exists
 
-    session_id = os.environ.get("HOPPER_SID")
-    if not session_id:
+    lode_id = os.environ.get("HOPPER_LID")
+    if not lode_id:
         return None
 
-    if not session_exists(_socket(), session_id):
-        print(f"Session {session_id} not found or archived.")
-        print("Unset HOPPER_SID to continue: unset HOPPER_SID")
+    if not lode_exists(_socket(), lode_id):
+        print(f"Lode {lode_id} not found or archived.")
+        print("Unset HOPPER_LID to continue: unset HOPPER_LID")
         return 1
     return None
 
 
-def get_hopper_sid() -> str | None:
-    """Get HOPPER_SID from environment if set."""
-    return os.environ.get("HOPPER_SID")
+def get_hopper_lid() -> str | None:
+    """Get HOPPER_LID from environment if set."""
+    return os.environ.get("HOPPER_LID")
 
 
 @command("up", "Start the server and TUI")
@@ -191,13 +191,13 @@ def cmd_up(args: list[str]) -> int:
     return start_server_with_tui(_socket(), tmux_location=tmux_location)
 
 
-@command("ore", "Run Claude for a session")
+@command("ore", "Run Claude for a lode")
 def cmd_ore(args: list[str]) -> int:
-    """Run Claude for a session, managing active/inactive state."""
+    """Run Claude for a lode, managing active/inactive state."""
     from hopper.ore import run_ore
 
-    parser = make_parser("ore", "Run Claude for a session (internal command).")
-    parser.add_argument("session_id", help="Session ID to run")
+    parser = make_parser("ore", "Run Claude for a lode (internal command).")
+    parser.add_argument("lode_id", help="Lode ID to run")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -210,16 +210,16 @@ def cmd_ore(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_ore(parsed.session_id, _socket())
+    return run_ore(parsed.lode_id, _socket())
 
 
-@command("refine", "Run refine workflow for a session")
+@command("refine", "Run refine workflow for a lode")
 def cmd_refine(args: list[str]) -> int:
     """Run Claude with refine prompt in a git worktree."""
     from hopper.refine import run_refine
 
-    parser = make_parser("refine", "Run refine workflow for a processing-stage session.")
-    parser.add_argument("session_id", help="Session ID to run")
+    parser = make_parser("refine", "Run refine workflow for a processing-stage lode.")
+    parser.add_argument("lode_id", help="Lode ID to run")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -232,16 +232,16 @@ def cmd_refine(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_refine(parsed.session_id, _socket())
+    return run_refine(parsed.lode_id, _socket())
 
 
-@command("ship", "Run ship workflow for a session")
+@command("ship", "Run ship workflow for a lode")
 def cmd_ship(args: list[str]) -> int:
     """Run Claude to merge feature branch back to main."""
     from hopper.ship import run_ship
 
-    parser = make_parser("ship", "Run ship workflow for a ship-stage session.")
-    parser.add_argument("session_id", help="Session ID to run")
+    parser = make_parser("ship", "Run ship workflow for a ship-stage lode.")
+    parser.add_argument("lode_id", help="Lode ID to run")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -254,17 +254,17 @@ def cmd_ship(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    return run_ship(parsed.session_id, _socket())
+    return run_ship(parsed.lode_id, _socket())
 
 
-@command("status", "Show or update session status")
+@command("status", "Show or update lode status")
 def cmd_status(args: list[str]) -> int:
-    """Show or update the current session's status text."""
-    from hopper.client import get_session, set_session_status
+    """Show or update the current lode's status text."""
+    from hopper.client import get_lode, set_lode_status
 
     parser = make_parser(
         "status",
-        "Show or update session status. "
+        "Show or update lode status. "
         "Without arguments, displays the current status. "
         "With arguments, sets the status to the provided text.",
     )
@@ -281,21 +281,21 @@ def cmd_status(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    session_id = get_hopper_sid()
-    if not session_id:
-        print("HOPPER_SID not set. Run this from within a hopper session.")
+    lode_id = get_hopper_lid()
+    if not lode_id:
+        print("HOPPER_LID not set. Run this from within a hopper lode.")
         return 1
 
-    if err := validate_hopper_sid():
+    if err := validate_hopper_lid():
         return err
 
     if not parsed.text:
         # Show current status
-        session = get_session(_socket(), session_id)
-        if not session:
-            print(f"Session {session_id} not found.")
+        lode = get_lode(_socket(), lode_id)
+        if not lode:
+            print(f"Lode {lode_id} not found.")
             return 1
-        status = session.get("status", "")
+        status = lode.get("status", "")
         if status:
             print(status)
         else:
@@ -309,10 +309,10 @@ def cmd_status(args: list[str]) -> int:
         return 1
 
     # Get current status for friendly output
-    session = get_session(_socket(), session_id)
-    old_status = session.get("status", "") if session else ""
+    lode = get_lode(_socket(), lode_id)
+    old_status = lode.get("status", "") if lode else ""
 
-    set_session_status(_socket(), session_id, new_status)
+    set_lode_status(_socket(), lode_id, new_status)
 
     if old_status:
         print(f"Updated from '{old_status}' to '{new_status}'")
@@ -324,12 +324,12 @@ def cmd_status(args: list[str]) -> int:
 
 @command("project", "Manage projects")
 def cmd_project(args: list[str]) -> int:
-    """Manage projects (git directories for sessions)."""
+    """Manage projects (git directories for lodes)."""
     from hopper.projects import add_project, load_projects, remove_project
 
     parser = make_parser(
         "project",
-        "Manage projects. Projects are git directories where sessions run.",
+        "Manage projects. Projects are git directories where lodes run.",
     )
     parser.add_argument(
         "action",
@@ -473,15 +473,15 @@ def cmd_screenshot(args: list[str]) -> int:
     return 0
 
 
-@command("shovel", "Save a shovel-ready prompt for a session")
+@command("shovel", "Save a shovel-ready prompt for a lode")
 def cmd_shovel(args: list[str]) -> int:
-    """Read a shovel-ready prompt from stdin and save it to the session directory."""
-    from hopper.client import set_session_state
-    from hopper.sessions import get_session_dir
+    """Read a shovel-ready prompt from stdin and save it to the lode directory."""
+    from hopper.client import set_lode_state
+    from hopper.lodes import get_lode_dir
 
     parser = make_parser(
         "shovel",
-        "Read a shovel-ready prompt from stdin and save it to the session directory. "
+        "Read a shovel-ready prompt from stdin and save it to the lode directory. "
         "Usage: hop shovel <<'EOF'\n<prompt>\nEOF",
     )
     try:
@@ -496,12 +496,12 @@ def cmd_shovel(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    session_id = get_hopper_sid()
-    if not session_id:
-        print("HOPPER_SID not set. Run this from within a hopper session.")
+    lode_id = get_hopper_lid()
+    if not lode_id:
+        print("HOPPER_LID not set. Run this from within a hopper lode.")
         return 1
 
-    if err := validate_hopper_sid():
+    if err := validate_hopper_lid():
         return err
 
     # Read prompt from stdin
@@ -510,16 +510,16 @@ def cmd_shovel(args: list[str]) -> int:
         print("No input received. Pipe a shovel-ready prompt via stdin.")
         return 1
 
-    # Write to session directory
-    session_dir = get_session_dir(session_id)
-    session_dir.mkdir(parents=True, exist_ok=True)
-    shovel_path = session_dir / "shovel.md"
+    # Write to lode directory
+    lode_dir = get_lode_dir(lode_id)
+    lode_dir.mkdir(parents=True, exist_ok=True)
+    shovel_path = lode_dir / "shovel.md"
     tmp_path = shovel_path.with_suffix(".md.tmp")
     tmp_path.write_text(prompt)
     os.replace(tmp_path, shovel_path)
 
-    # Update session status
-    set_session_state(_socket(), session_id, "completed", "Shovel complete")
+    # Update lode status
+    set_lode_state(_socket(), lode_id, "completed", "Shovel complete")
 
     print(f"Saved to {shovel_path}")
     return 0
@@ -527,13 +527,13 @@ def cmd_shovel(args: list[str]) -> int:
 
 @command("refined", "Signal that refine workflow is complete")
 def cmd_refined(args: list[str]) -> int:
-    """Signal that the refine workflow is complete for this session."""
-    from hopper.client import set_session_state
+    """Signal that the refine workflow is complete for this lode."""
+    from hopper.client import set_lode_state
 
     parser = make_parser(
         "refined",
         "Signal that the refine workflow is complete. "
-        "Called by Claude from within a refine session.",
+        "Called by Claude from within a refine lode.",
     )
     try:
         parse_args(parser, args)
@@ -547,15 +547,15 @@ def cmd_refined(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    session_id = get_hopper_sid()
-    if not session_id:
-        print("HOPPER_SID not set. Run this from within a hopper session.")
+    lode_id = get_hopper_lid()
+    if not lode_id:
+        print("HOPPER_LID not set. Run this from within a hopper lode.")
         return 1
 
-    if err := validate_hopper_sid():
+    if err := validate_hopper_lid():
         return err
 
-    set_session_state(_socket(), session_id, "completed", "Refine complete")
+    set_lode_state(_socket(), lode_id, "completed", "Refine complete")
 
     print("Refine complete.")
     return 0
@@ -563,13 +563,12 @@ def cmd_refined(args: list[str]) -> int:
 
 @command("shipped", "Signal that ship workflow is complete")
 def cmd_shipped(args: list[str]) -> int:
-    """Signal that the ship workflow is complete for this session."""
-    from hopper.client import set_session_state
+    """Signal that the ship workflow is complete for this lode."""
+    from hopper.client import set_lode_state
 
     parser = make_parser(
         "shipped",
-        "Signal that the ship workflow is complete. "
-        "Called by Claude from within a ship session.",
+        "Signal that the ship workflow is complete. " "Called by Claude from within a ship lode.",
     )
     try:
         parse_args(parser, args)
@@ -583,15 +582,15 @@ def cmd_shipped(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    session_id = get_hopper_sid()
-    if not session_id:
-        print("HOPPER_SID not set. Run this from within a hopper session.")
+    lode_id = get_hopper_lid()
+    if not lode_id:
+        print("HOPPER_LID not set. Run this from within a hopper lode.")
         return 1
 
-    if err := validate_hopper_sid():
+    if err := validate_hopper_lid():
         return err
 
-    set_session_state(_socket(), session_id, "completed", "Ship complete")
+    set_lode_state(_socket(), lode_id, "completed", "Ship complete")
 
     print("Ship complete.")
     return 0
@@ -599,10 +598,10 @@ def cmd_shipped(args: list[str]) -> int:
 
 @command("code", "Run a stage prompt via Codex")
 def cmd_code(args: list[str]) -> int:
-    """Run a stage prompt via Codex, resuming the session's Codex thread."""
+    """Run a stage prompt via Codex, resuming the lode's Codex thread."""
     from hopper.code import run_code
 
-    parser = make_parser("code", "Run a prompts/<stage>.md file via Codex for a session.")
+    parser = make_parser("code", "Run a prompts/<stage>.md file via Codex for a lode.")
     parser.add_argument("stage", help="Stage name (matches prompts/<stage>.md)")
     try:
         parsed = parse_args(parser, args)
@@ -616,12 +615,12 @@ def cmd_code(args: list[str]) -> int:
     if err := require_server():
         return err
 
-    session_id = get_hopper_sid()
-    if not session_id:
-        print("HOPPER_SID not set. Run this from within a hopper session.")
+    lode_id = get_hopper_lid()
+    if not lode_id:
+        print("HOPPER_LID not set. Run this from within a hopper lode.")
         return 1
 
-    if err := validate_hopper_sid():
+    if err := validate_hopper_lid():
         return err
 
     # Read directions from stdin (heredoc)
@@ -630,7 +629,7 @@ def cmd_code(args: list[str]) -> int:
         print("No directions provided. Use: hop code <stage> <<'EOF'\\n<directions>\\nEOF")
         return 1
 
-    return run_code(session_id, _socket(), parsed.stage, request)
+    return run_code(lode_id, _socket(), parsed.stage, request)
 
 
 @command("backlog", "Manage backlog items")
@@ -642,8 +641,8 @@ def cmd_backlog(args: list[str]) -> int:
         load_backlog,
         remove_backlog_item,
     )
-    from hopper.client import add_backlog, get_session, ping, remove_backlog
-    from hopper.sessions import format_age
+    from hopper.client import add_backlog, get_lode, ping, remove_backlog
+    from hopper.lodes import format_age
 
     parser = make_parser(
         "backlog",
@@ -657,7 +656,7 @@ def cmd_backlog(args: list[str]) -> int:
         help="Action to perform (default: list)",
     )
     parser.add_argument("text", nargs="*", help="Description (for add) or ID prefix (for remove)")
-    parser.add_argument("--project", "-p", help="Project name (required if no active session)")
+    parser.add_argument("--project", "-p", help="Project name (required if no active lode)")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -685,27 +684,27 @@ def cmd_backlog(args: list[str]) -> int:
 
         description = " ".join(parsed.text)
         project = parsed.project
-        session_id = get_hopper_sid()
+        lode_id = get_hopper_lid()
 
-        # Resolve project from session if not provided
-        if not project and session_id:
+        # Resolve project from lode if not provided
+        if not project and lode_id:
             if err := require_server():
                 return err
-            session = get_session(_socket(), session_id)
-            if session:
-                project = session.get("project", "")
+            lode = get_lode(_socket(), lode_id)
+            if lode:
+                project = lode.get("project", "")
 
         if not project:
-            print("error: --project required (no active session to resolve from)")
+            print("error: --project required (no active lode to resolve from)")
             return 1
 
         # Route through server if running, otherwise write directly
         server_running = ping(_socket())
         if server_running:
-            add_backlog(_socket(), project, description, session_id=session_id)
+            add_backlog(_socket(), project, description, lode_id=lode_id)
         else:
             items = load_backlog()
-            add_backlog_item(items, project, description, session_id=session_id)
+            add_backlog_item(items, project, description, lode_id=lode_id)
 
         print(f"Added: [{project}] {description}")
         return 0
@@ -751,16 +750,16 @@ def cmd_ping(args: list[str]) -> int:
         parser.print_usage()
         return 1
 
-    session_id = get_hopper_sid()
-    response = connect(_socket(), session_id=session_id)
+    lode_id = get_hopper_lid()
+    response = connect(_socket(), lode_id=lode_id)
     if not response:
         require_server()
         return 1
 
-    # Check session validity if HOPPER_SID was set
-    if session_id and not response.get("session_found", False):
-        print(f"Session {session_id} not found or archived.")
-        print("Unset HOPPER_SID to continue: unset HOPPER_SID")
+    # Check lode validity if HOPPER_LID was set
+    if lode_id and not response.get("lode_found", False):
+        print(f"Lode {lode_id} not found or archived.")
+        print("Unset HOPPER_LID to continue: unset HOPPER_LID")
         return 1
 
     # Build output
@@ -768,8 +767,8 @@ def cmd_ping(args: list[str]) -> int:
     tmux = response.get("tmux")
     if tmux:
         parts.append(f"tmux:{tmux['session']}:{tmux['pane']}")
-    if session_id:
-        parts.append(f"session:{session_id}")
+    if lode_id:
+        parts.append(f"lode:{lode_id}")
     print(" ".join(parts))
     return 0
 

@@ -10,7 +10,7 @@ def isolate_config(tmp_path, monkeypatch):
     """Isolate all tests from the real config directory.
 
     Redirects hopper_dir() to a temporary directory so all file paths
-    (sessions, backlog, config, socket) resolve there automatically.
+    (lodes, backlog, config, socket) resolve there automatically.
     """
     monkeypatch.setattr(config, "hopper_dir", lambda: tmp_path)
     return tmp_path

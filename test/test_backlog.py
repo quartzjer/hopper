@@ -18,7 +18,7 @@ def test_backlog_item_to_dict_and_from_dict():
         project="myproject",
         description="Fix the bug",
         created_at=1234567890,
-        session_id="session-456",
+        lode_id="session-456",
     )
     data = item.to_dict()
     restored = BacklogItem.from_dict(data)
@@ -27,7 +27,7 @@ def test_backlog_item_to_dict_and_from_dict():
     assert restored.project == item.project
     assert restored.description == item.description
     assert restored.created_at == item.created_at
-    assert restored.session_id == item.session_id
+    assert restored.lode_id == item.lode_id
 
 
 def test_backlog_item_short_id():
@@ -36,8 +36,8 @@ def test_backlog_item_short_id():
     assert item.short_id == "abcd1234"
 
 
-def test_backlog_item_no_session_id():
-    """BacklogItem without session_id defaults to None."""
+def test_backlog_item_no_lode_id():
+    """BacklogItem without lode_id defaults to None."""
     data = {
         "id": "abc-123",
         "project": "myproject",
@@ -45,7 +45,7 @@ def test_backlog_item_no_session_id():
         "created_at": 1000,
     }
     item = BacklogItem.from_dict(data)
-    assert item.session_id is None
+    assert item.lode_id is None
 
 
 def test_load_backlog_empty(temp_config):
@@ -63,7 +63,7 @@ def test_save_and_load_backlog(temp_config):
             project="proj-b",
             description="Second",
             created_at=2000,
-            session_id="sess-1",
+            lode_id="sess-1",
         ),
     ]
     save_backlog(items)
@@ -73,7 +73,7 @@ def test_save_and_load_backlog(temp_config):
     assert loaded[0].id == "id-1"
     assert loaded[0].project == "proj-a"
     assert loaded[1].id == "id-2"
-    assert loaded[1].session_id == "sess-1"
+    assert loaded[1].lode_id == "sess-1"
 
 
 def test_save_backlog_atomic(temp_config):
@@ -94,7 +94,7 @@ def test_add_backlog_item(temp_config):
     assert len(items) == 1
     assert item.project == "myproject"
     assert item.description == "Do something"
-    assert item.session_id is None
+    assert item.lode_id is None
     assert item.created_at > 0
 
     # Verify persisted
@@ -106,8 +106,8 @@ def test_add_backlog_item(temp_config):
 def test_add_backlog_item_with_session(temp_config):
     """add_backlog_item records the session that added it."""
     items: list[BacklogItem] = []
-    item = add_backlog_item(items, "proj", "Task", session_id="sess-123")
-    assert item.session_id == "sess-123"
+    item = add_backlog_item(items, "proj", "Task", lode_id="sess-123")
+    assert item.lode_id == "sess-123"
 
 
 def test_remove_backlog_item(temp_config):
