@@ -89,7 +89,7 @@ class Row:
     age: str  # formatted age string
     status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
     active: bool = False  # Whether a runner is connected
-    auto: bool = False  # Whether auto-advance is enabled
+    auto: bool = True  # Whether auto-advance is enabled
     project: str = ""  # Project name
     status_text: str = ""  # Human-readable status text
 
