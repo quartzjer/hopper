@@ -718,3 +718,78 @@ def test_server_handles_lode_set_claude_started(socket_path, server, temp_config
     assert server.lodes[0]["claude"]["refine"]["started"] is False
 
     client.close()
+
+
+class TestActivityLog:
+    def test_activity_log_created_on_start(self, isolate_config, server):
+        """Server start creates activity.log with listening message."""
+        log_path = isolate_config / "activity.log"
+        assert log_path.exists()
+        content = log_path.read_text()
+        assert "Server listening" in content
+
+    def test_lode_mutation_logged(self, isolate_config, server, socket_path, make_lode):
+        """Lode state change produces a log line with lode ID and new state."""
+        server.lodes = [make_lode(id="test-log")]
+        save_lodes(server.lodes)
+
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(str(socket_path))
+        client.settimeout(2.0)
+        try:
+            msg = {
+                "type": "lode_set_state",
+                "lode_id": "test-log",
+                "state": "running",
+                "status": "doing stuff",
+            }
+            client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+            client.recv(4096)
+        finally:
+            client.close()
+
+        time.sleep(0.1)
+        log_path = isolate_config / "activity.log"
+        content = log_path.read_text()
+        assert "test-log" in content
+        assert "state=running" in content
+
+    def test_backlog_mutation_logged(self, isolate_config, server, socket_path):
+        """Backlog add produces a log line with item ID."""
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(str(socket_path))
+        client.settimeout(2.0)
+        try:
+            msg = {"type": "backlog_add", "project": "myproj", "description": "do thing"}
+            client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+            client.recv(4096)
+        finally:
+            client.close()
+
+        time.sleep(0.1)
+        log_path = isolate_config / "activity.log"
+        content = log_path.read_text()
+        assert "added project=myproj" in content
+
+    def test_server_stop_closes_handler(self, isolate_config, socket_path):
+        """Server stop removes and closes the file handler."""
+        srv = Server(socket_path)
+        thread = threading.Thread(target=srv.start, daemon=True)
+        thread.start()
+
+        for _ in range(50):
+            if socket_path.exists():
+                break
+            time.sleep(0.1)
+        else:
+            raise TimeoutError("Server did not start")
+
+        assert srv._log_handler is not None
+        handler = srv._log_handler
+        stream = handler.stream
+
+        srv.stop()
+        thread.join(timeout=2)
+
+        assert srv._log_handler is None
+        assert stream is None or stream.closed

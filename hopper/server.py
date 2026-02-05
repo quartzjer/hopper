@@ -14,6 +14,7 @@ import threading
 import time
 from pathlib import Path
 
+from hopper import config
 from hopper.backlog import (
     BacklogItem,
     add_backlog_item,
@@ -82,6 +83,7 @@ class Server:
         # Lode ownership tracking: lode_id -> socket, socket -> lode_id
         self.lode_clients: dict[str, socket.socket] = {}
         self.client_lodes: dict[socket.socket, str] = {}
+        self._log_handler: logging.FileHandler | None = None
 
     def _find_lode(self, lode_id: str) -> dict | None:
         """Find a lode by ID."""
@@ -90,6 +92,19 @@ class Server:
     def start(self) -> None:
         """Start the server (blocking)."""
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        # Configure file logging for all hopper modules
+        log_path = config.hopper_dir() / "activity.log"
+        handler = logging.FileHandler(log_path)
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            "%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        hopper_logger = logging.getLogger("hopper")
+        hopper_logger.setLevel(logging.DEBUG)
+        hopper_logger.addHandler(handler)
+        self._log_handler = handler
         self.lodes = load_lodes()
         self.backlog = load_backlog()
 
@@ -194,7 +209,7 @@ class Server:
         touch(lode)
         save_lodes(self.lodes)
 
-        logger.debug(f"Lode {lode_id} disconnected, active=False")
+        logger.info(f"Lode {lode_id} disconnected, active=False")
         self.broadcast({"type": "lode_updated", "lode": lode})
 
         stage = lode.get("stage", "")
@@ -247,7 +262,7 @@ class Server:
             save_lodes(self.lodes)
             self.broadcast({"type": "lode_updated", "lode": lode})
 
-        logger.debug(f"Registered client for lode {lode_id}, active=True")
+        logger.info(f"Registered client for lode {lode_id}, active=True")
 
     def _handle_message(self, message: dict, conn: socket.socket) -> None:
         """Handle an incoming message, responding directly if needed."""
@@ -285,6 +300,7 @@ class Server:
         elif msg_type == "lode_create":
             project = message.get("project", "")
             lode = create_lode(self.lodes, project)
+            logger.info(f"Lode {lode['id']} created project={project}")
             self.broadcast({"type": "lode_created", "lode": lode})
 
         elif msg_type == "lode_update":
@@ -293,6 +309,7 @@ class Server:
             if lode_id and stage:
                 lode = update_lode_stage(self.lodes, lode_id, stage)
                 if lode:
+                    logger.info(f"Lode {lode_id} stage={stage}")
                     self.broadcast({"type": "lode_updated", "lode": lode})
 
         elif msg_type == "lode_archive":
@@ -300,6 +317,7 @@ class Server:
             if lode_id:
                 lode = archive_lode(self.lodes, lode_id)
                 if lode:
+                    logger.info(f"Lode {lode_id} archived")
                     self.broadcast({"type": "lode_archived", "lode": lode})
 
         elif msg_type == "lode_set_state":
@@ -309,6 +327,7 @@ class Server:
             if lode_id and state:
                 lode = update_lode_state(self.lodes, lode_id, state, status)
                 if lode:
+                    logger.info(f"Lode {lode_id} state={state} status={status}")
                     self.broadcast({"type": "lode_state_changed", "lode": lode})
 
         elif msg_type == "lode_set_status":
@@ -317,6 +336,7 @@ class Server:
             if lode_id:
                 lode = update_lode_status(self.lodes, lode_id, status)
                 if lode:
+                    logger.info(f"Lode {lode_id} status={status}")
                     self.broadcast({"type": "lode_status_changed", "lode": lode})
 
         elif msg_type == "lode_set_auto":
@@ -326,6 +346,7 @@ class Server:
                 lode = self._find_lode(lode_id)
                 if lode:
                     lode["auto"] = auto
+                    logger.info(f"Lode {lode_id} auto={auto}")
                     touch(lode)
                     save_lodes(self.lodes)
                     self.broadcast({"type": "lode_updated", "lode": lode})
@@ -337,6 +358,7 @@ class Server:
                 lode = self._find_lode(lode_id)
                 if lode:
                     lode["codex_thread_id"] = thread_id
+                    logger.info(f"Lode {lode_id} codex_thread={thread_id}")
                     touch(lode)
                     save_lodes(self.lodes)
                     self.broadcast({"type": "lode_updated", "lode": lode})
@@ -348,6 +370,7 @@ class Server:
                 lode = self._find_lode(lode_id)
                 if lode and claude_stage in lode.get("claude", {}):
                     lode["claude"][claude_stage]["started"] = True
+                    logger.info(f"Lode {lode_id} claude_started stage={claude_stage}")
                     touch(lode)
                     save_lodes(self.lodes)
                     self.broadcast({"type": "lode_updated", "lode": lode})
@@ -362,6 +385,7 @@ class Server:
             lode_id = message.get("lode_id")
             if project and description:
                 item = add_backlog_item(self.backlog, project, description, lode_id)
+                logger.info(f"Backlog {item.id} added project={project}")
                 self.broadcast({"type": "backlog_added", "item": item.to_dict()})
 
         elif msg_type == "backlog_remove":
@@ -369,6 +393,7 @@ class Server:
             item = find_backlog_by_prefix(self.backlog, item_id)
             if item:
                 remove_backlog_item(self.backlog, item.id)
+                logger.info(f"Backlog {item.id} removed")
                 self.broadcast({"type": "backlog_removed", "item": item.to_dict()})
 
         else:
@@ -478,6 +503,12 @@ class Server:
                 pass
 
         logger.info("Server stopped")
+        # Close log file handler
+        if self._log_handler:
+            hopper_logger = logging.getLogger("hopper")
+            hopper_logger.removeHandler(self._log_handler)
+            self._log_handler.close()
+            self._log_handler = None
 
 
 def start_server_with_tui(socket_path: Path, tmux_location: dict | None = None) -> int:
