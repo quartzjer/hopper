@@ -6,6 +6,7 @@ from hopper import prompt
 from hopper.client import set_codex_thread_id
 from hopper.codex import bootstrap_codex
 from hopper.git import create_worktree
+from hopper.pyenv import get_venv_env, has_pyproject, setup_worktree_venv
 from hopper.runner import BaseRunner
 from hopper.sessions import SHORT_ID_LEN, get_session_dir
 
@@ -24,6 +25,7 @@ class RefineRunner(BaseRunner):
         self.worktree_path: Path | None = None
         self.shovel_content: str | None = None
         self.stage: str = ""
+        self.use_venv: bool = False
 
     def _load_session_data(self, session_data: dict) -> None:
         self.stage = session_data.get("stage", "")
@@ -49,6 +51,17 @@ class RefineRunner(BaseRunner):
             if not create_worktree(self.project_dir, self.worktree_path, branch_name):
                 print("Failed to create git worktree.")
                 return 1
+
+        # Set up venv if project has pyproject.toml
+        if has_pyproject(self.worktree_path):
+            sid = self.session_id[:SHORT_ID_LEN]
+            venv_path = self.worktree_path / ".venv"
+            if not venv_path.is_dir():
+                print(f"Setting up virtual environment for {sid}...")
+            if not setup_worktree_venv(self.worktree_path):
+                print("Failed to set up virtual environment.")
+                return 1
+            self.use_venv = True
 
         # Load shovel doc for first run
         if self.is_first_run:
@@ -90,7 +103,9 @@ class RefineRunner(BaseRunner):
             print("Prompt not found: prompts/code.md")
             return 1
 
-        exit_code, thread_id = bootstrap_codex(code_prompt, str(self.worktree_path))
+        # Pass venv environment if applicable
+        env = self._get_subprocess_env() if self.use_venv else None
+        exit_code, thread_id = bootstrap_codex(code_prompt, str(self.worktree_path), env=env)
 
         if exit_code == 127:
             print("codex command not found. Install codex to use code features.")
@@ -106,6 +121,13 @@ class RefineRunner(BaseRunner):
         set_codex_thread_id(self.socket_path, self.session_id, thread_id)
         print(f"Codex session {thread_id[:8]} ready.")
         return None
+
+    def _get_subprocess_env(self) -> dict:
+        """Build environment with venv activated if applicable."""
+        base_env = super()._get_subprocess_env()
+        if self.use_venv and self.worktree_path:
+            return get_venv_env(self.worktree_path, base_env)
+        return base_env
 
     def _build_command(self) -> tuple[list[str], str | None]:
         cwd = str(self.worktree_path)

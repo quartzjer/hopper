@@ -166,12 +166,17 @@ class BaseRunner:
         """
         raise NotImplementedError
 
+    def _get_subprocess_env(self) -> dict:
+        """Build environment for subprocess. Subclasses can override to add venv."""
+        env = os.environ.copy()
+        env["HOPPER_SID"] = self.session_id
+        return env
+
     def _run_claude(self) -> tuple[int, str | None]:
         """Run Claude subprocess. Returns (exit_code, error_message)."""
         cmd, cwd = self._build_command()
 
-        env = os.environ.copy()
-        env["HOPPER_SID"] = self.session_id
+        env = self._get_subprocess_env()
 
         logger.debug(f"Running: {' '.join(cmd[:3])}...")
 

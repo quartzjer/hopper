@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 CODEX_FLAGS = "--dangerously-bypass-approvals-and-sandbox"
 
 
-def bootstrap_codex(prompt: str, cwd: str) -> tuple[int, str | None]:
+def bootstrap_codex(prompt: str, cwd: str, env: dict | None = None) -> tuple[int, str | None]:
     """Bootstrap a new Codex session and return its thread ID.
 
     Runs codex exec --json to create a fresh session. Parses the thread_id
@@ -18,6 +18,7 @@ def bootstrap_codex(prompt: str, cwd: str) -> tuple[int, str | None]:
     Args:
         prompt: The prompt text to send to Codex.
         cwd: Working directory for Codex.
+        env: Optional environment dict. Uses inherited env if None.
 
     Returns:
         (exit_code, thread_id) tuple. thread_id is None on failure.
@@ -28,7 +29,7 @@ def bootstrap_codex(prompt: str, cwd: str) -> tuple[int, str | None]:
     logger.debug(f"Bootstrapping codex session in {cwd}")
 
     try:
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
     except FileNotFoundError:
         logger.error("codex command not found")
         return 127, None
@@ -45,7 +46,9 @@ def bootstrap_codex(prompt: str, cwd: str) -> tuple[int, str | None]:
     return result.returncode, thread_id
 
 
-def run_codex(prompt: str, cwd: str, output_file: str, thread_id: str) -> tuple[int, list[str]]:
+def run_codex(
+    prompt: str, cwd: str, output_file: str, thread_id: str, env: dict | None = None
+) -> tuple[int, list[str]]:
     """Run Codex by resuming an existing session.
 
     Args:
@@ -53,6 +56,7 @@ def run_codex(prompt: str, cwd: str, output_file: str, thread_id: str) -> tuple[
         cwd: Working directory for Codex.
         output_file: Path to write the final agent message.
         thread_id: Codex thread ID to resume.
+        env: Optional environment dict. Uses inherited env if None.
 
     Returns:
         (exit_code, cmd) tuple. Exit code is 127 if codex not found,
@@ -72,7 +76,7 @@ def run_codex(prompt: str, cwd: str, output_file: str, thread_id: str) -> tuple[
     logger.debug(f"Running: codex exec resume {thread_id[:8]}... in {cwd}")
 
     try:
-        result = subprocess.run(cmd, cwd=cwd)
+        result = subprocess.run(cmd, cwd=cwd, env=env)
         return result.returncode, cmd
     except FileNotFoundError:
         logger.error("codex command not found")
