@@ -371,6 +371,32 @@ def set_lode_status(socket_path: Path, lode_id: str, status: str, timeout: float
         return False
 
 
+def set_lode_title(socket_path: Path, lode_id: str, title: str, timeout: float = 2.0) -> bool:
+    """Set a lode's title only (fire-and-forget).
+
+    Args:
+        socket_path: Path to the Unix socket
+        lode_id: The lode ID to update
+        title: Short human-readable title
+        timeout: Connection timeout in seconds
+
+    Returns:
+        True if message was sent successfully, False otherwise
+    """
+    msg = {
+        "type": "lode_set_title",
+        "lode_id": lode_id,
+        "title": title,
+        "ts": current_time_ms(),
+    }
+    # Fire-and-forget: don't wait for response
+    try:
+        send_message(socket_path, msg, timeout=timeout, wait_for_response=False)
+        return True
+    except Exception:
+        return False
+
+
 def set_codex_thread_id(
     socket_path: Path, lode_id: str, codex_thread_id: str, timeout: float = 2.0
 ) -> bool:

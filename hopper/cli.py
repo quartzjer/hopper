@@ -218,16 +218,17 @@ def cmd_process(args: list[str]) -> int:
 
 @command("status", "Show or update lode status")
 def cmd_status(args: list[str]) -> int:
-    """Show or update the current lode's status text."""
-    from hopper.client import get_lode, set_lode_status
+    """Show or update the current lode's status text and title."""
+    from hopper.client import get_lode, set_lode_status, set_lode_title
 
     parser = make_parser(
         "status",
         "Show or update lode status. "
-        "Without arguments, displays the current status. "
-        "With arguments, sets the status to the provided text.",
+        "Without arguments, displays the current status and title. "
+        "With arguments, sets the status text. Use -t to set the title.",
     )
     parser.add_argument("text", nargs="*", help="New status text (optional)")
+    parser.add_argument("-t", "--title", default=None, help="Set a short title for this lode")
     try:
         parsed = parse_args(parser, args)
     except SystemExit:
@@ -248,35 +249,43 @@ def cmd_status(args: list[str]) -> int:
     if err := validate_hopper_lid():
         return err
 
-    if not parsed.text:
+    if not parsed.text and parsed.title is None:
         # Show current status
         lode = get_lode(_socket(), lode_id)
         if not lode:
             print(f"Lode {lode_id} not found.")
             return 1
+        title = lode.get("title", "")
         status = lode.get("status", "")
+        if title:
+            print(f"Title: {title}")
         if status:
             print(status)
         else:
             print("(no status)")
         return 0
 
-    # Update status - join all args as the text
-    new_status = " ".join(parsed.text)
-    if not new_status.strip():
-        print("Status text required.")
-        return 1
+    if parsed.title is not None:
+        set_lode_title(_socket(), lode_id, parsed.title)
+        print(f"Title set to '{parsed.title}'")
 
-    # Get current status for friendly output
-    lode = get_lode(_socket(), lode_id)
-    old_status = lode.get("status", "") if lode else ""
+    if parsed.text:
+        # Update status - join all args as the text
+        new_status = " ".join(parsed.text)
+        if not new_status.strip():
+            print("Status text required.")
+            return 1
 
-    set_lode_status(_socket(), lode_id, new_status)
+        # Get current status for friendly output
+        lode = get_lode(_socket(), lode_id)
+        old_status = lode.get("status", "") if lode else ""
 
-    if old_status:
-        print(f"Updated from '{old_status}' to '{new_status}'")
-    else:
-        print(f"Updated to '{new_status}'")
+        set_lode_status(_socket(), lode_id, new_status)
+
+        if old_status:
+            print(f"Updated from '{old_status}' to '{new_status}'")
+        else:
+            print(f"Updated to '{new_status}'")
 
     return 0
 

@@ -98,6 +98,7 @@ class Row:
     active: bool = False  # Whether a runner is connected
     auto: bool = True  # Whether auto-advance is enabled
     project: str = ""  # Project name
+    title: str = ""  # Short human-readable lode title
     status_text: str = ""  # Human-readable status text
 
 
@@ -123,6 +124,7 @@ def lode_to_row(lode: dict) -> Row:
         active=lode.get("active", False),
         auto=lode.get("auto", False),
         project=lode.get("project", ""),
+        title=lode.get("title", ""),
         status_text=lode.get("status", ""),
     )
 
@@ -790,6 +792,7 @@ class LodeTable(DataTable):
     COL_ID = "id"
     COL_PROJECT = "project"
     COL_AGE = "age"
+    COL_TITLE = "title"
     COL_STATUS_TEXT = "status_text"
 
     def __init__(self, **kwargs):
@@ -805,6 +808,7 @@ class LodeTable(DataTable):
         self.add_column("id", key=self.COL_ID)
         self.add_column("project", key=self.COL_PROJECT)
         self.add_column("last", key=self.COL_AGE)
+        self.add_column("title", key=self.COL_TITLE, width=18)
         self.add_column("status", key=self.COL_STATUS_TEXT)
 
     def on_resize(self, event: events.Resize) -> None:
@@ -1029,6 +1033,7 @@ class HopperApp(App):
                 table.update_cell(row.id, LodeTable.COL_ID, row.id)
                 table.update_cell(row.id, LodeTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, LodeTable.COL_AGE, row.age)
+                table.update_cell(row.id, LodeTable.COL_TITLE, row.title)
                 table.update_cell(
                     row.id,
                     LodeTable.COL_STATUS_TEXT,
@@ -1047,6 +1052,7 @@ class HopperApp(App):
                     row.id,
                     row.project,
                     row.age,
+                    row.title,
                     format_status_label(row.status_text, row.status),
                     key=row.id,
                 )
@@ -1054,7 +1060,7 @@ class HopperApp(App):
         # Add hint row at the bottom if not already there
         if not has_hint:
             hint = Text("c to create new lode", style="bright_black italic")
-            table.add_row("", "", "", "", "", "", "", hint, key=HINT_LODE)
+            table.add_row("", "", "", "", "", "", "", "", hint, key=HINT_LODE)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""

@@ -12,6 +12,7 @@ Lodes are plain dicts with these fields:
 - updated_at: int - milliseconds since epoch (default 0, meaning use created_at)
 - state: str - "new", "running", "stuck", "error", etc. (default "new")
 - status: str - human-readable status text (default "")
+- title: str - short human-readable label (default "")
 - active: bool - whether a runner client is connected (default False)
 - auto: bool - whether to auto-advance to next stage on completion (default True)
 - tmux_pane: str | None - tmux pane ID (default None)
@@ -235,6 +236,7 @@ def create_lode(lodes: list[dict], project: str, scope: str = "") -> dict:
         "updated_at": now,
         "state": "new",
         "status": "Ready to start",
+        "title": "",
         "active": False,
         "auto": True,
         "tmux_pane": None,
@@ -297,6 +299,17 @@ def update_lode_status(lodes: list[dict], lode_id: str, status: str) -> dict | N
     for lode in lodes:
         if lode["id"] == lode_id:
             lode["status"] = status
+            touch(lode)
+            save_lodes(lodes)
+            return lode
+    return None
+
+
+def update_lode_title(lodes: list[dict], lode_id: str, title: str) -> dict | None:
+    """Update a lode's title only. Returns the updated lode or None if not found."""
+    for lode in lodes:
+        if lode["id"] == lode_id:
+            lode["title"] = title
             touch(lode)
             save_lodes(lodes)
             return lode

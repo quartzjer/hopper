@@ -99,6 +99,14 @@ Before finalizing, resolve any ambiguity yourself by examining the repo. If you 
 G) Register your output
 Once the prompt is complete and unambiguous, register it:
 
+First, set a short title for this lode (a unique 2-word label):
+
+```
+hop status -t "<2 word title>"
+```
+
+Then register your output:
+
 ```
 hop processed <<'EOF'
 <your scoped prompt here>

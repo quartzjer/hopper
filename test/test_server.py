@@ -301,6 +301,41 @@ def test_server_handles_lode_set_state(socket_path, server, temp_config, make_lo
     client.close()
 
 
+def test_server_handles_lode_set_title(socket_path, server, temp_config, make_lode):
+    """Server handles lode_set_title message."""
+    lode = make_lode(id="test-id")
+    server.lodes = [lode]
+    save_lodes(server.lodes)
+
+    # Connect client
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+
+    # Wait for client to be registered
+    for _ in range(50):
+        if len(server.clients) > 0:
+            break
+        time.sleep(0.1)
+
+    # Send lode_set_title message
+    msg = {"type": "lode_set_title", "lode_id": "test-id", "title": "Auth Flow"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    # Should receive broadcast
+    data = client.recv(4096).decode("utf-8")
+    response = json.loads(data.strip().split("\n")[0])
+
+    assert response["type"] == "lode_title_changed"
+    assert response["lode"]["id"] == "test-id"
+    assert response["lode"]["title"] == "Auth Flow"
+
+    # Server's lode should be updated
+    assert server.lodes[0]["title"] == "Auth Flow"
+
+    client.close()
+
+
 def test_server_connect_does_not_register_ownership(socket_path, server, temp_config, make_lode):
     """Connect message returns lode data but does not register ownership."""
     lode = make_lode(id="test-id")

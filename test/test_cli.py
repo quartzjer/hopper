@@ -440,6 +440,20 @@ def test_status_show(capsys):
     assert "Working on feature X" in captured.out
 
 
+def test_status_show_title(capsys):
+    """status command shows title when present."""
+    session_data = {"id": "test-session", "title": "Auth Flow", "status": "Working on feature X"}
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
+                    result = cmd_status([])
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "Title: Auth Flow" in captured.out
+    assert "Working on feature X" in captured.out
+
+
 def test_status_show_empty(capsys):
     """status command shows placeholder when no status set."""
     session_data = {"id": "test-session", "status": ""}
@@ -465,6 +479,42 @@ def test_status_update(capsys):
     assert result == 0
     captured = capsys.readouterr()
     assert "Updated from 'Old status' to 'New status text'" in captured.out
+
+
+def test_status_set_title(capsys):
+    """status -t sets title only."""
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.set_lode_title", return_value=True) as mock_set_title:
+                    result = cmd_status(["-t", "Auth Flow"])
+    assert result == 0
+    mock_set_title.assert_called_once()
+    assert mock_set_title.call_args.args[1:] == ("test-session", "Auth Flow")
+    captured = capsys.readouterr()
+    assert "Title set to 'Auth Flow'" in captured.out
+
+
+def test_status_set_title_and_text(capsys):
+    """status -t with text sets both title and status."""
+    session_data = {"id": "test-session", "status": "Old status"}
+    with patch.dict(os.environ, {"HOPPER_LID": "test-session"}):
+        with patch("hopper.client.ping", return_value=True):
+            with patch("hopper.client.lode_exists", return_value=True):
+                with patch("hopper.client.get_lode", return_value=session_data):
+                    with patch("hopper.client.set_lode_title", return_value=True) as mock_set_title:
+                        with patch(
+                            "hopper.client.set_lode_status", return_value=True
+                        ) as mock_set_status:
+                            result = cmd_status(["-t", "New", "updated", "text"])
+    assert result == 0
+    mock_set_title.assert_called_once()
+    assert mock_set_title.call_args.args[1:] == ("test-session", "New")
+    mock_set_status.assert_called_once()
+    assert mock_set_status.call_args.args[1:] == ("test-session", "updated text")
+    captured = capsys.readouterr()
+    assert "Title set to 'New'" in captured.out
+    assert "Updated from 'Old status' to 'updated text'" in captured.out
 
 
 def test_status_update_from_empty(capsys):

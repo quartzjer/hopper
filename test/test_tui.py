@@ -126,6 +126,23 @@ def test_lode_to_row_task_state():
     assert row.status == STATUS_RUNNING
 
 
+def test_lode_to_row_title():
+    """lode_to_row maps title and defaults missing title to empty string."""
+    session_with_title = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "new",
+        "title": "Auth Flow",
+    }
+    row_with_title = lode_to_row(session_with_title)
+    assert row_with_title.title == "Auth Flow"
+
+    session_without_title = {"id": "efgh5678", "stage": "mill", "created_at": 1000, "state": "new"}
+    row_without_title = lode_to_row(session_without_title)
+    assert row_without_title.title == ""
+
+
 # Tests for format_status_text
 
 
@@ -290,6 +307,7 @@ def test_row_dataclass():
         status=STATUS_RUNNING,
         auto=True,
         project="proj",
+        title="Auth Flow",
         status_text="Working on it",
     )
     assert row.id == "test1234"
@@ -298,6 +316,7 @@ def test_row_dataclass():
     assert row.status == STATUS_RUNNING
     assert row.auto is True
     assert row.project == "proj"
+    assert row.title == "Auth Flow"
     assert row.status_text == "Working on it"
 
 

@@ -20,6 +20,7 @@ from hopper.lodes import (
     touch,
     update_lode_stage,
     update_lode_state,
+    update_lode_title,
 )
 
 
@@ -36,6 +37,7 @@ def test_lode_dict_json_roundtrip():
         "project": "",
         "scope": "",
         "status": "",
+        "title": "",
         "codex_thread_id": None,
         "backlog": None,
     }
@@ -387,6 +389,24 @@ def test_update_lode_state_not_found(temp_config):
     result = update_lode_state(lodes_list, "nonexistent", "running", "Test")
 
     assert result is None
+
+
+def test_update_lode_title(temp_config):
+    """update_lode_title changes title and touches timestamp."""
+    lodes_list = [
+        {"id": "testid11", "stage": "mill", "created_at": 1000, "updated_at": 1000, "state": "new"}
+    ]
+    save_lodes(lodes_list)
+
+    updated = update_lode_title(lodes_list, "testid11", "Auth Flow")
+
+    assert updated is not None
+    assert updated["title"] == "Auth Flow"
+    assert updated["updated_at"] > 1000
+
+    # Verify persistence
+    loaded = load_lodes()
+    assert loaded[0]["title"] == "Auth Flow"
 
 
 def test_lode_backlog_field_roundtrip():

@@ -46,6 +46,7 @@ def make_lode():
             "scope": "",
             "state": "new",
             "status": "",
+            "title": "",
             "active": False,
             "auto": auto,
             "tmux_pane": None,

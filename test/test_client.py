@@ -16,6 +16,7 @@ from hopper.client import (
     ping,
     send_message,
     set_lode_state,
+    set_lode_title,
 )
 from hopper.server import Server
 
@@ -183,6 +184,31 @@ def test_set_lode_state_sends_message(server, socket_path):
     # Lode should be updated
     assert server.lodes[0]["state"] == "running"
     assert server.lodes[0]["status"] == "Claude running"
+
+
+def test_set_lode_title_no_server(socket_path):
+    """set_lode_title returns True even when server not running (fire-and-forget)."""
+    result = set_lode_title(socket_path, "any-session", "Test Title", timeout=0.5)
+    # Fire-and-forget still returns True if send attempt was made
+    # but the underlying send_message will fail silently
+    assert result is True
+
+
+def test_set_lode_title_sends_message(server, socket_path):
+    """set_lode_title sends the correct message type."""
+
+    # Create a session first
+    session = {"id": "test-id", "stage": "mill", "created_at": 1000, "state": "new"}
+    server.lodes = [session]
+
+    result = set_lode_title(socket_path, "test-id", "Auth Flow")
+    assert result is True
+
+    # Give server time to process
+    time.sleep(0.1)
+
+    # Lode should be updated
+    assert server.lodes[0]["title"] == "Auth Flow"
 
 
 class TestHopperConnection:

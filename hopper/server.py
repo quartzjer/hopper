@@ -35,6 +35,7 @@ from hopper.lodes import (
     update_lode_stage,
     update_lode_state,
     update_lode_status,
+    update_lode_title,
 )
 from hopper.process import STAGES
 from hopper.projects import find_project
@@ -338,6 +339,15 @@ class Server:
                 if lode:
                     logger.info(f"Lode {lode_id} status={status}")
                     self.broadcast({"type": "lode_status_changed", "lode": lode})
+
+        elif msg_type == "lode_set_title":
+            lode_id = message.get("lode_id")
+            title = message.get("title", "")
+            if lode_id:
+                lode = update_lode_title(self.lodes, lode_id, title)
+                if lode:
+                    logger.info(f"Lode {lode_id} title={title}")
+                    self.broadcast({"type": "lode_title_changed", "lode": lode})
 
         elif msg_type == "lode_set_auto":
             lode_id = message.get("lode_id")
