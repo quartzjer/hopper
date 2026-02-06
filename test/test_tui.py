@@ -12,6 +12,7 @@ from hopper.projects import Project
 from hopper.tui import (
     AUTO_OFF,
     AUTO_ON,
+    STATUS_DISCONNECTED,
     STATUS_ERROR,
     STATUS_NEW,
     STATUS_RUNNING,
@@ -24,7 +25,6 @@ from hopper.tui import (
     ProjectPickerScreen,
     Row,
     ScopeInputScreen,
-    format_active_text,
     format_auto_text,
     format_stage_text,
     format_status_label,
@@ -38,7 +38,13 @@ from hopper.tui import (
 
 def test_lode_to_row_new():
     """New session has new status indicator."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "new"}
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "new",
+        "active": True,
+    }
     row = lode_to_row(session)
     assert row.id == "abcd1234"
     assert row.status == STATUS_NEW
@@ -47,33 +53,6 @@ def test_lode_to_row_new():
 
 def test_lode_to_row_running():
     """Running session has running status indicator."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "running"}
-    row = lode_to_row(session)
-    assert row.id == "abcd1234"
-    assert row.status == STATUS_RUNNING
-    assert row.stage == "mill"
-
-
-def test_lode_to_row_stuck():
-    """Stuck session has stuck status indicator."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "stuck"}
-    row = lode_to_row(session)
-    assert row.id == "abcd1234"
-    assert row.status == STATUS_STUCK
-    assert row.stage == "mill"
-
-
-def test_lode_to_row_error():
-    """Error session has error status indicator."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "error"}
-    row = lode_to_row(session)
-    assert row.id == "abcd1234"
-    assert row.status == STATUS_ERROR
-    assert row.stage == "mill"
-
-
-def test_lode_to_row_active():
-    """Active session has active=True in row."""
     session = {
         "id": "abcd1234",
         "stage": "mill",
@@ -82,14 +61,39 @@ def test_lode_to_row_active():
         "active": True,
     }
     row = lode_to_row(session)
-    assert row.active is True
+    assert row.id == "abcd1234"
+    assert row.status == STATUS_RUNNING
+    assert row.stage == "mill"
 
 
-def test_lode_to_row_inactive():
-    """Inactive session has active=False in row."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "new"}
+def test_lode_to_row_stuck():
+    """Stuck session has stuck status indicator."""
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "stuck",
+        "active": True,
+    }
     row = lode_to_row(session)
-    assert row.active is False
+    assert row.id == "abcd1234"
+    assert row.status == STATUS_STUCK
+    assert row.stage == "mill"
+
+
+def test_lode_to_row_error():
+    """Error session has error status indicator."""
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "error",
+        "active": True,
+    }
+    row = lode_to_row(session)
+    assert row.id == "abcd1234"
+    assert row.status == STATUS_ERROR
+    assert row.stage == "mill"
 
 
 def test_lode_to_row_auto():
@@ -108,21 +112,39 @@ def test_lode_to_row_refine_stage():
 
 def test_lode_to_row_completed():
     """Completed session shows running indicator (transient state)."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "state": "completed"}
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "completed",
+        "active": True,
+    }
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
 
 def test_lode_to_row_ready():
     """Ready session shows running indicator (active work)."""
-    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "ready"}
+    session = {
+        "id": "abcd1234",
+        "stage": "refine",
+        "created_at": 1000,
+        "state": "ready",
+        "active": True,
+    }
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
 
 def test_lode_to_row_task_state():
     """Task-name state shows running indicator (active work)."""
-    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "audit"}
+    session = {
+        "id": "abcd1234",
+        "stage": "refine",
+        "created_at": 1000,
+        "state": "audit",
+        "active": True,
+    }
     row = lode_to_row(session)
     assert row.status == STATUS_RUNNING
 
@@ -183,21 +205,43 @@ def test_format_status_text_new():
     assert text.style == "bright_black"
 
 
-# Tests for format_active_text
+def test_lode_to_row_disconnected():
+    """Non-shipped inactive lode gets STATUS_DISCONNECTED icon."""
+    lode = {
+        "id": "abc",
+        "stage": "refine",
+        "state": "running",
+        "active": False,
+        "created_at": 1000,
+    }
+    row = lode_to_row(lode)
+    assert row.status == STATUS_DISCONNECTED
 
 
-def test_format_active_text_active():
-    """format_active_text returns bright_cyan for active."""
-    text = format_active_text(True)
-    assert str(text) == "▸"
-    assert text.style == "bright_cyan"
+def test_lode_to_row_shipped_inactive():
+    """Shipped lode shows STATUS_SHIPPED even when inactive."""
+    lode = {
+        "id": "abc",
+        "stage": "shipped",
+        "state": "running",
+        "active": False,
+        "created_at": 1000,
+    }
+    row = lode_to_row(lode)
+    assert row.status == STATUS_SHIPPED
 
 
-def test_format_active_text_inactive():
-    """format_active_text returns bright_black for inactive."""
-    text = format_active_text(False)
-    assert str(text) == "▹"
-    assert text.style == "bright_black"
+def test_lode_to_row_active_shows_state_icon():
+    """Active non-shipped lode shows normal state-based icon."""
+    lode = {
+        "id": "abc",
+        "stage": "refine",
+        "state": "running",
+        "active": True,
+        "created_at": 1000,
+    }
+    row = lode_to_row(lode)
+    assert row.status == STATUS_RUNNING
 
 
 def test_format_auto_text_on():
@@ -1941,7 +1985,7 @@ async def test_legend_dismiss_with_escape():
 
 @pytest.mark.asyncio
 async def test_legend_contains_all_symbols():
-    """Legend should contain all status, auto, and connection symbols."""
+    """Legend should contain all status and auto symbols."""
     from textual.widgets import Static
 
     app = HopperApp()
@@ -1954,10 +1998,9 @@ async def test_legend_contains_all_symbols():
         assert STATUS_ERROR in text
         assert STATUS_NEW in text
         assert STATUS_SHIPPED in text
+        assert STATUS_DISCONNECTED in text
         assert AUTO_ON in text
         assert AUTO_OFF in text
-        assert "▸" in text
-        assert "▹" in text
 
 
 # Tests for ShipReviewScreen

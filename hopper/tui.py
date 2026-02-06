@@ -73,6 +73,7 @@ STATUS_STUCK = "◐"  # half-filled circle
 STATUS_NEW = "○"  # empty circle
 STATUS_ERROR = "✗"  # x mark
 STATUS_SHIPPED = "✓"
+STATUS_DISCONNECTED = "⊘"  # circled division slash — runner not connected
 
 # Hint row keys (always present at bottom of each table)
 HINT_LODE = "_hint_lode"
@@ -88,6 +89,7 @@ STATUS_COLORS = {
     STATUS_ERROR: "bright_red",
     STATUS_NEW: "bright_black",
     STATUS_SHIPPED: "bright_green",
+    STATUS_DISCONNECTED: "bright_red",
 }
 
 STAGE_ORDER = {"mill": 0, "refine": 1, "ship": 2, "shipped": 3}
@@ -100,8 +102,8 @@ class Row:
     id: str
     stage: str  # "mill", "refine", "ship", or "shipped"
     age: str  # formatted age string
-    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_SHIPPED
-    active: bool = False  # Whether a runner is connected
+    # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_SHIPPED, STATUS_DISCONNECTED
+    status: str
     auto: bool = True  # Whether auto-advance is enabled
     project: str = ""  # Project name
     title: str = ""  # Short human-readable lode title
@@ -123,13 +125,14 @@ def lode_to_row(lode: dict) -> Row:
         status = STATUS_RUNNING
 
     stage = lode.get("stage", "mill")
+    if not lode.get("active", False) and stage != "shipped":
+        status = STATUS_DISCONNECTED
 
     return Row(
         id=lode["id"],
         stage=stage,
         age=format_age(lode["created_at"]),
         status=status,
-        active=lode.get("active", False),
         auto=lode.get("auto", False),
         project=lode.get("project", ""),
         title=lode.get("title", ""),
@@ -151,14 +154,6 @@ def format_status_label(label: str, status: str) -> Text:
     """Format status text with color matching the status icon."""
     cleaned = strip_ansi(label.replace("\n", " ")) if label else ""
     return Text(cleaned, style=STATUS_COLORS.get(status, ""))
-
-
-def format_active_text(active: bool) -> Text:
-    """Format an active indicator with color using Rich Text."""
-    if active:
-        return Text("▸", style="bright_cyan")
-    else:
-        return Text("▹", style="bright_black")
 
 
 def format_auto_text(auto: bool) -> Text:
@@ -793,6 +788,8 @@ class LegendScreen(ModalScreen):
         t.append("  new\n", style="bright_black")
         t.append(f"  {STATUS_SHIPPED}", style="bright_green")
         t.append("  shipped\n", style="bright_black")
+        t.append(f"  {STATUS_DISCONNECTED}", style="bright_red")
+        t.append("  disconnected\n", style="bright_black")
 
         t.append("\n")
 
@@ -801,14 +798,6 @@ class LegendScreen(ModalScreen):
         t.append("  auto-advance on\n", style="bright_black")
         t.append(f"  {AUTO_OFF}", style="bright_black")
         t.append("  auto-advance off\n", style="bright_black")
-
-        t.append("\n")
-
-        t.append("Connection\n", style="bold")
-        t.append("  ▸", style="bright_cyan")
-        t.append("  connected\n", style="bright_black")
-        t.append("  ▹", style="bright_black")
-        t.append("  disconnected", style="bright_black")
 
         t.append("\n")
         t.append("Keys\n", style="bold")
@@ -906,7 +895,6 @@ class LodeTable(DataTable):
 
     # Column keys for update_cell operations
     COL_STATUS = "status"
-    COL_ACTIVE = "active"
     COL_AUTO = "auto"
     COL_STAGE = "stage"
     COL_ID = "id"
@@ -922,7 +910,6 @@ class LodeTable(DataTable):
     def on_mount(self) -> None:
         """Set up columns when mounted with explicit keys."""
         self.add_column("", key=self.COL_STATUS)
-        self.add_column("", key=self.COL_ACTIVE)
         self.add_column(AUTO_ON, key=self.COL_AUTO, width=3)
         self.add_column("stage", key=self.COL_STAGE)
         self.add_column("id", key=self.COL_ID)
@@ -1182,7 +1169,6 @@ class HopperApp(App):
             if row.id in existing_keys:
                 # Update existing row cells
                 table.update_cell(row.id, LodeTable.COL_STATUS, format_status_text(row.status))
-                table.update_cell(row.id, LodeTable.COL_ACTIVE, format_active_text(row.active))
                 table.update_cell(row.id, LodeTable.COL_AUTO, format_auto_text(row.auto))
                 table.update_cell(row.id, LodeTable.COL_STAGE, format_stage_text(row.stage))
                 table.update_cell(row.id, LodeTable.COL_ID, row.id)
@@ -1201,7 +1187,6 @@ class HopperApp(App):
                     has_hint = False
                 table.add_row(
                     format_status_text(row.status),
-                    format_active_text(row.active),
                     format_auto_text(row.auto),
                     format_stage_text(row.stage),
                     row.id,
@@ -1219,7 +1204,7 @@ class HopperApp(App):
         if has_hint:
             table.update_cell(HINT_LODE, LodeTable.COL_STATUS_TEXT, hint)
         else:
-            table.add_row("", "", "", "", "", "", "", "", hint, key=HINT_LODE)
+            table.add_row("", "", "", "", "", "", "", hint, key=HINT_LODE)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""
