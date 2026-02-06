@@ -512,6 +512,36 @@ class TestRefineStage:
             call(runner.socket_path, runner.lode_id, "Bootstrapping Codex..."),
         ]
 
+    def test_no_makefile_skips_make_install(self, tmp_path):
+        """First-run refine without Makefile skips make install and venv."""
+        runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "refine")
+        session_dir, project_dir, mock_project = self._setup_refine(tmp_path)
+        (session_dir / "mill_out.md").write_text("Build the widget")
+
+        with (
+            patch(
+                "hopper.runner.connect",
+                return_value=_mock_response(stage="refine", state="ready", project="my-project"),
+            ),
+            patch("hopper.runner.HopperConnection", return_value=_mock_conn()),
+            patch("hopper.runner.find_project", return_value=mock_project),
+            patch("hopper.process.get_lode_dir", return_value=session_dir),
+            patch("hopper.process.create_worktree", return_value=True),
+            patch("hopper.process._has_makefile", return_value=False),
+            patch("hopper.process._run_make_install") as mock_make_install,
+            patch("hopper.process.prompt.load", return_value="loaded prompt"),
+            patch("hopper.process.bootstrap_codex", return_value=(0, "codex-thread-abc")),
+            patch("hopper.process.set_codex_thread_id", return_value=True),
+            patch("hopper.process.set_lode_status"),
+            patch("subprocess.Popen", return_value=MagicMock(returncode=0, stderr=None)),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
+        ):
+            exit_code = runner.run()
+
+        assert exit_code == 0
+        mock_make_install.assert_not_called()
+        assert runner.use_venv is False
+
     def test_resume_skips_bootstrap(self, tmp_path):
         """Resume uses --resume and skips Codex bootstrap."""
         runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "refine")
