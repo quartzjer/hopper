@@ -3,7 +3,7 @@
 
 """Tests for the TUI module."""
 
-from unittest.mock import PropertyMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from textual.app import App
@@ -1062,15 +1062,146 @@ def test_action_delete_archives_lode():
     sessions = [{"id": "aaaa1111", "stage": "mill", "created_at": 1000}]
     server = MockServer(sessions)
     app = HopperApp(server=server)
+
+    worktree_path = MagicMock()
+    worktree_path.is_dir.return_value = False
+
+    lode_dir = MagicMock()
+    lode_dir.__truediv__.return_value = worktree_path
+
     with (
         patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
+        patch("hopper.tui.get_lode_dir", return_value=lode_dir),
         patch("hopper.tui.archive_lode") as mock_archive,
         patch.object(app, "refresh_table") as mock_refresh,
     ):
         app.action_delete()
     mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
     mock_refresh.assert_called_once()
+
+
+def test_action_delete_shows_modal_for_unmerged_changes():
+    """action_delete shows confirmation modal when worktree has unmerged changes."""
+    from hopper.tui import ArchiveConfirmScreen, LodeTable
+
+    sessions = [{"id": "aaaa1111", "stage": "refine", "created_at": 1000}]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    fake_diff = " file.py | 5 ++---"
+
+    worktree_path = MagicMock()
+    worktree_path.is_dir.return_value = True
+    worktree_path.__str__.return_value = "/fake/worktree"
+
+    lode_dir = MagicMock()
+    lode_dir.__truediv__.return_value = worktree_path
+
+    with (
+        patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
+        patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
+        patch("hopper.tui.get_lode_dir", return_value=lode_dir),
+        patch("hopper.tui.get_diff_stat", return_value=fake_diff),
+        patch("hopper.tui.archive_lode") as mock_archive,
+        patch.object(app, "push_screen") as mock_push,
+        patch.object(app, "refresh_table"),
+    ):
+        app.action_delete()
+
+    mock_archive.assert_not_called()
+    mock_push.assert_called_once()
+    screen_arg = mock_push.call_args.args[0]
+    assert isinstance(screen_arg, ArchiveConfirmScreen)
+
+
+def test_action_delete_archives_immediately_without_worktree():
+    """action_delete archives immediately when lode has no worktree directory."""
+    from hopper.tui import LodeTable
+
+    sessions = [{"id": "aaaa1111", "stage": "mill", "created_at": 1000}]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+
+    worktree_path = MagicMock()
+    worktree_path.is_dir.return_value = False
+
+    lode_dir = MagicMock()
+    lode_dir.__truediv__.return_value = worktree_path
+
+    with (
+        patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
+        patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
+        patch("hopper.tui.get_lode_dir", return_value=lode_dir),
+        patch("hopper.tui.archive_lode") as mock_archive,
+        patch.object(app, "push_screen") as mock_push,
+        patch.object(app, "refresh_table"),
+    ):
+        app.action_delete()
+
+    mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
+    mock_push.assert_not_called()
+
+
+def test_action_delete_archives_immediately_with_empty_diff():
+    """action_delete archives immediately when worktree diff stat is empty (merged)."""
+    from hopper.tui import LodeTable
+
+    sessions = [{"id": "aaaa1111", "stage": "refine", "created_at": 1000}]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+
+    worktree_path = MagicMock()
+    worktree_path.is_dir.return_value = True
+    worktree_path.__str__.return_value = "/fake/worktree"
+
+    lode_dir = MagicMock()
+    lode_dir.__truediv__.return_value = worktree_path
+
+    with (
+        patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
+        patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
+        patch("hopper.tui.get_lode_dir", return_value=lode_dir),
+        patch("hopper.tui.get_diff_stat", return_value=""),
+        patch("hopper.tui.archive_lode") as mock_archive,
+        patch.object(app, "push_screen") as mock_push,
+        patch.object(app, "refresh_table"),
+    ):
+        app.action_delete()
+
+    mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
+    mock_push.assert_not_called()
+
+
+def test_action_delete_cancel_does_not_archive():
+    """Cancelling the archive confirmation modal does not archive the lode."""
+    from hopper.tui import LodeTable
+
+    sessions = [{"id": "aaaa1111", "stage": "refine", "created_at": 1000}]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    fake_diff = " file.py | 5 ++---"
+
+    worktree_path = MagicMock()
+    worktree_path.is_dir.return_value = True
+    worktree_path.__str__.return_value = "/fake/worktree"
+
+    lode_dir = MagicMock()
+    lode_dir.__truediv__.return_value = worktree_path
+
+    with (
+        patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
+        patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
+        patch("hopper.tui.get_lode_dir", return_value=lode_dir),
+        patch("hopper.tui.get_diff_stat", return_value=fake_diff),
+        patch("hopper.tui.archive_lode") as mock_archive,
+        patch.object(app, "push_screen") as mock_push,
+        patch.object(app, "refresh_table"),
+    ):
+        app.action_delete()
+        callback = mock_push.call_args.args[1]
+        callback(None)
+
+    mock_archive.assert_not_called()
 
 
 def test_action_delete_removes_backlog():
@@ -1105,6 +1236,28 @@ def test_action_delete_noop_when_neither_focused():
         app.action_delete()
     mock_archive.assert_not_called()
     mock_remove.assert_not_called()
+
+
+def test_format_diff_stat():
+    """format_diff_stat colorizes +/- characters."""
+    from rich.text import Text
+
+    from hopper.tui import format_diff_stat
+
+    result = format_diff_stat(" file.py | 3 ++-")
+    assert isinstance(result, Text)
+    plain = result.plain
+    assert "file.py" in plain
+    assert "+" in plain
+    assert "-" in plain
+
+
+def test_format_diff_stat_empty():
+    """format_diff_stat returns 'No changes' for empty input."""
+    from hopper.tui import format_diff_stat
+
+    result = format_diff_stat("")
+    assert "No changes" in result.plain
 
 
 # Tests for BacklogEditScreen

@@ -398,6 +398,34 @@ class MillReviewScreen(TextInputScreen):
         self.dismiss((action, text))
 
 
+def format_diff_stat(diff_stat: str) -> Text:
+    """Format diff stat output with colors (green +, red -)."""
+    if not diff_stat:
+        return Text("No changes", style="dim")
+
+    text = Text()
+    for line in diff_stat.split("\n"):
+        if "|" in line:
+            # File line: " filename | 10 +++++-----"
+            parts = line.split("|")
+            text.append(parts[0])
+            text.append("|")
+            if len(parts) > 1:
+                stat_part = parts[1]
+                for char in stat_part:
+                    if char == "+":
+                        text.append(char, style="bright_green")
+                    elif char == "-":
+                        text.append(char, style="bright_red")
+                    else:
+                        text.append(char)
+            text.append("\n")
+        else:
+            # Summary line or other
+            text.append(line + "\n")
+    return text
+
+
 class ShipReviewScreen(ModalScreen[str | None]):
     """Modal screen for reviewing changes before shipping."""
 
@@ -463,31 +491,7 @@ class ShipReviewScreen(ModalScreen[str | None]):
                 yield Button("Ship", id="btn-ship", variant="primary")
 
     def _format_diff(self) -> Text:
-        """Format the diff stat output with colors."""
-        if not self._diff_stat:
-            return Text("No changes", style="dim")
-
-        text = Text()
-        for line in self._diff_stat.split("\n"):
-            if "|" in line:
-                # File line: " filename | 10 +++++-----"
-                parts = line.split("|")
-                text.append(parts[0])
-                text.append("|")
-                if len(parts) > 1:
-                    stat_part = parts[1]
-                    for char in stat_part:
-                        if char == "+":
-                            text.append(char, style="bright_green")
-                        elif char == "-":
-                            text.append(char, style="bright_red")
-                        else:
-                            text.append(char)
-                text.append("\n")
-            else:
-                # Summary line or other
-                text.append(line + "\n")
-        return text
+        return format_diff_stat(self._diff_stat)
 
     def on_mount(self) -> None:
         self.query_one("#btn-ship").focus()
@@ -517,6 +521,101 @@ class ShipReviewScreen(ModalScreen[str | None]):
             self.dismiss("refine")
         elif event.button.id == "btn-ship":
             self.dismiss("ship")
+
+
+class ArchiveConfirmScreen(ModalScreen[bool | None]):
+    """Modal screen for confirming archive of a lode with unmerged changes."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ArchiveConfirmScreen {
+        align: center middle;
+        height: 100%;
+    }
+
+    #archive-container {
+        width: 80;
+        height: auto;
+        max-height: 80%;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+
+    #archive-title {
+        text-align: center;
+        text-style: bold;
+        color: $text;
+        padding-bottom: 1;
+    }
+
+    #archive-diff {
+        height: auto;
+        max-height: 20;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+
+    #archive-buttons {
+        height: auto;
+        align: center middle;
+        padding-top: 1;
+    }
+
+    #archive-buttons Button {
+        margin: 0 1;
+    }
+
+    #archive-buttons Button:focus {
+        text-style: bold reverse;
+    }
+    """
+
+    def __init__(self, diff_stat: str, lode_id: str):
+        super().__init__()
+        self._diff_stat = diff_stat
+        self._lode_id = lode_id
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="archive-container"):
+            yield Static(
+                f"Unmerged changes on hopper-{self._lode_id}",
+                id="archive-title",
+            )
+            yield Static(format_diff_stat(self._diff_stat), id="archive-diff")
+            with Horizontal(id="archive-buttons"):
+                yield Button("Cancel", id="btn-cancel", variant="default")
+                yield Button("Archive", id="btn-archive", variant="error")
+
+    def on_mount(self) -> None:
+        self.query_one("#btn-cancel").focus()
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.focused
+        buttons = list(self.query("#archive-buttons Button"))
+
+        if event.key == "right" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx + 1) % len(buttons)].focus()
+        elif event.key == "left" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx - 1) % len(buttons)].focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.dismiss(None)
+        elif event.button.id == "btn-archive":
+            self.dismiss(True)
 
 
 class LegendScreen(ModalScreen):
@@ -1060,6 +1159,23 @@ class HopperApp(App):
             lode_id = self._get_selected_lode_id()
             if not lode_id:
                 return
+            # Check for worktree with unmerged changes
+            worktree_path = get_lode_dir(lode_id) / "worktree"
+            if worktree_path.is_dir():
+                diff_stat = get_diff_stat(str(worktree_path))
+                if diff_stat:
+                    # Has unmerged changes - show confirmation modal
+                    def on_confirm(result: bool | None) -> None:
+                        if result:
+                            archive_lode(self._lodes, lode_id)
+                            self.refresh_table()
+
+                    self.push_screen(
+                        ArchiveConfirmScreen(diff_stat=diff_stat, lode_id=lode_id),
+                        on_confirm,
+                    )
+                    return
+            # No worktree or no changes - archive immediately
             archive_lode(self._lodes, lode_id)
             self.refresh_table()
         elif isinstance(self.focused, BacklogTable):
