@@ -87,72 +87,83 @@ class BaseRunner:
         original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
 
         try:
-            # Query server for lode state and project info
-            response = connect(self.socket_path, lode_id=self.lode_id)
-            if not response:
-                print(f"Failed to connect to server for lode {self.lode_id}")
+            try:
+                # Query server for lode state and project info
+                response = connect(self.socket_path, lode_id=self.lode_id)
+                if not response:
+                    print(f"Failed to connect to server for lode {self.lode_id}")
+                    return 1
+
+                lode_data = response.get("lode")
+                if not lode_data:
+                    print(f"Lode {self.lode_id} not found")
+                    return 1
+
+                if lode_data.get("active", False):
+                    logger.error(f"Lode {self.lode_id} already has an active connection")
+                    print(f"Lode {self.lode_id} is already active")
+                    return 1
+
+                # Read per-stage Claude session info
+                claude_info = lode_data.get("claude", {}).get(self._claude_stage, {})
+                self.claude_session_id = claude_info.get("session_id", "")
+                self.is_first_run = not claude_info.get("started", False)
+
+                project_name = lode_data.get("project", "")
+                if project_name:
+                    self.project_name = project_name
+                    project = find_project(project_name)
+                    if project:
+                        self.project_dir = project.path
+
+                # Let subclass extract additional data
+                self._load_lode_data(lode_data)
+
+                # Start persistent connection and register ownership
+                self.connection = HopperConnection(self.socket_path)
+                self.connection.start(
+                    callback=self._on_server_message,
+                    on_connect=lambda: self.connection.emit(
+                        "lode_register",
+                        lode_id=self.lode_id,
+                        tmux_pane=get_current_pane_id(),
+                    ),
+                )
+
+                # Subclass pre-flight validation and setup
+                err = self._setup()
+                if err is not None:
+                    self._emit_state("error", self._setup_error or "Setup failed")
+                    return err
+
+                # Run Claude (blocking)
+                exit_code, error_msg = self._run_claude()
+
+                # Mark this stage's Claude session as started
+                if self.is_first_run and exit_code != 127:
+                    self._emit_claude_started()
+
+                if exit_code == 127:
+                    msg = error_msg or "Command not found"
+                    print(f"Error [{self.lode_id}]: {msg}")
+                    self._emit_state("error", msg)
+                elif exit_code != 0 and exit_code != 130:
+                    msg = error_msg or f"Exited with code {exit_code}"
+                    print(f"Error [{self.lode_id}]: {msg}")
+                    self._emit_state("error", msg)
+                elif exit_code == 0 and self._done.is_set():
+                    self._emit_state("ready", self._done_status)
+                    if self._next_stage:
+                        self._emit_stage(self._next_stage)
+
+                return exit_code
+            except Exception as exc:
+                print(f"Error [{self.lode_id}]: {exc}")
+                try:
+                    self._emit_state("error", str(exc))
+                except Exception:
+                    pass
                 return 1
-
-            lode_data = response.get("lode")
-            if not lode_data:
-                print(f"Lode {self.lode_id} not found")
-                return 1
-
-            if lode_data.get("active", False):
-                logger.error(f"Lode {self.lode_id} already has an active connection")
-                print(f"Lode {self.lode_id} is already active")
-                return 1
-
-            # Read per-stage Claude session info
-            claude_info = lode_data.get("claude", {}).get(self._claude_stage, {})
-            self.claude_session_id = claude_info.get("session_id", "")
-            self.is_first_run = not claude_info.get("started", False)
-
-            project_name = lode_data.get("project", "")
-            if project_name:
-                self.project_name = project_name
-                project = find_project(project_name)
-                if project:
-                    self.project_dir = project.path
-
-            # Let subclass extract additional data
-            self._load_lode_data(lode_data)
-
-            # Start persistent connection and register ownership
-            self.connection = HopperConnection(self.socket_path)
-            self.connection.start(
-                callback=self._on_server_message,
-                on_connect=lambda: self.connection.emit(
-                    "lode_register",
-                    lode_id=self.lode_id,
-                    tmux_pane=get_current_pane_id(),
-                ),
-            )
-
-            # Subclass pre-flight validation and setup
-            err = self._setup()
-            if err is not None:
-                self._emit_state("error", self._setup_error or "Setup failed")
-                return err
-
-            # Run Claude (blocking)
-            exit_code, error_msg = self._run_claude()
-
-            # Mark this stage's Claude session as started
-            if self.is_first_run and exit_code != 127:
-                self._emit_claude_started()
-
-            if exit_code == 127:
-                self._emit_state("error", error_msg or "Command not found")
-            elif exit_code != 0 and exit_code != 130:
-                msg = error_msg or f"Exited with code {exit_code}"
-                self._emit_state("error", msg)
-            elif exit_code == 0 and self._done.is_set():
-                self._emit_state("ready", self._done_status)
-                if self._next_stage:
-                    self._emit_stage(self._next_stage)
-
-            return exit_code
 
         finally:
             self._stop_monitor()

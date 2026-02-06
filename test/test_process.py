@@ -115,7 +115,7 @@ class TestMillStage:
         )
         MockConn.return_value.stop.assert_called_once()
 
-    def test_emits_error_on_nonzero_exit(self):
+    def test_emits_error_on_nonzero_exit(self, capsys):
         """Runner emits error state on non-zero exit."""
         runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "mill")
         emitted = []
@@ -136,9 +136,10 @@ class TestMillStage:
         ):
             assert runner.run() == 1
 
+        assert "Exited with code 1" in capsys.readouterr().out
         assert any(e[0] == "lode_set_state" and e[1]["state"] == "error" for e in emitted)
 
-    def test_captures_stderr_on_error(self):
+    def test_captures_stderr_on_error(self, capsys):
         """Runner captures stderr as error message."""
         runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "mill")
         emitted = []
@@ -161,6 +162,7 @@ class TestMillStage:
         ):
             runner.run()
 
+        assert "something broke" in capsys.readouterr().out
         error_emissions = [
             e for e in emitted if e[0] == "lode_set_state" and e[1]["state"] == "error"
         ]
@@ -308,7 +310,7 @@ class TestMillStage:
         context = mock_load.call_args[1]["context"]
         assert context["scope"] == "build the widget"
 
-    def test_handles_missing_claude(self):
+    def test_handles_missing_claude(self, capsys):
         """Runner returns 127 if claude not found."""
         runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "mill")
         emitted = []
@@ -325,6 +327,32 @@ class TestMillStage:
             patch("hopper.runner.get_current_pane_id", return_value=None),
         ):
             assert runner.run() == 127
+
+        assert "command not found" in capsys.readouterr().out.lower()
+
+    def test_prints_on_unexpected_exception(self, capsys):
+        """Runner prints and emits error on unexpected exception."""
+        runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "mill")
+        emitted = []
+
+        with (
+            patch(
+                "hopper.runner.connect",
+                return_value=_mock_response(
+                    stage="mill", state="running", claude=_claude_sessions(mill={"started": True})
+                ),
+            ),
+            patch("hopper.runner.HopperConnection", return_value=_mock_conn(emitted)),
+            patch.object(runner, "_run_claude", side_effect=RuntimeError("disk full")),
+            patch("hopper.runner.get_current_pane_id", return_value=None),
+        ):
+            assert runner.run() == 1
+
+        assert "disk full" in capsys.readouterr().out
+        assert any(
+            e[0] == "lode_set_state" and e[1]["state"] == "error" and e[1]["status"] == "disk full"
+            for e in emitted
+        )
 
     def test_clean_exit_after_done_emits_ready_and_next_stage(self):
         """Mill emits state=ready then stage=refine after completion."""
@@ -1057,3 +1085,23 @@ class TestRunProcess:
         """run_process fails if server connection fails."""
         with patch("hopper.client.connect", return_value=None):
             assert run_process("test-id", Path("/tmp/test.sock")) == 1
+
+    def test_prints_on_unexpected_exception(self, capsys):
+        """run_process prints and sets error state on unexpected exception."""
+        with (
+            patch(
+                "hopper.client.connect",
+                return_value={"lode": {"stage": "mill"}},
+            ),
+            patch.object(ProcessRunner, "run", side_effect=RuntimeError("unexpected crash")),
+            patch("hopper.process.set_lode_state") as mock_set_state,
+        ):
+            assert run_process("test-id", Path("/tmp/test.sock")) == 1
+
+        assert "unexpected crash" in capsys.readouterr().out
+        mock_set_state.assert_called_once_with(
+            Path("/tmp/test.sock"),
+            "test-id",
+            "error",
+            "unexpected crash",
+        )

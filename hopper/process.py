@@ -349,4 +349,12 @@ def run_process(lode_id: str, socket_path: Path) -> int:
         return 1
 
     runner = ProcessRunner(lode_id, socket_path, stage)
-    return runner.run()
+    try:
+        return runner.run()
+    except Exception as exc:
+        print(f"Error [{lode_id}]: {exc}")
+        try:
+            set_lode_state(socket_path, lode_id, "error", str(exc))
+        except Exception:
+            pass
+        return 1
