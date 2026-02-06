@@ -70,6 +70,7 @@ STATUS_RUNNING = "●"  # filled circle
 STATUS_STUCK = "◐"  # half-filled circle
 STATUS_NEW = "○"  # empty circle
 STATUS_ERROR = "✗"  # x mark
+STATUS_SHIPPED = "✓"
 
 # Hint row keys (always present at bottom of each table)
 HINT_LODE = "_hint_lode"
@@ -84,6 +85,7 @@ STATUS_COLORS = {
     STATUS_STUCK: "bright_yellow",
     STATUS_ERROR: "bright_red",
     STATUS_NEW: "bright_black",
+    STATUS_SHIPPED: "bright_green",
 }
 
 
@@ -92,9 +94,9 @@ class Row:
     """A row in a table."""
 
     id: str
-    stage: str  # "mill", "refine", or "ship"
+    stage: str  # "mill", "refine", "ship", or "shipped"
     age: str  # formatted age string
-    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR
+    status: str  # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_SHIPPED
     active: bool = False  # Whether a runner is connected
     auto: bool = True  # Whether auto-advance is enabled
     project: str = ""  # Project name
@@ -105,7 +107,9 @@ class Row:
 def lode_to_row(lode: dict) -> Row:
     """Convert a lode dict to a display row."""
     state = lode.get("state", "new")
-    if state == "new":
+    if lode.get("stage") == "shipped":
+        status = STATUS_SHIPPED
+    elif state == "new":
         status = STATUS_NEW
     elif state == "error":
         status = STATUS_ERROR
@@ -167,6 +171,8 @@ def format_stage_text(stage: str) -> Text:
     elif stage == "refine":
         return Text(stage, style="bright_yellow")
     elif stage == "ship":
+        return Text(stage, style="bright_green")
+    elif stage == "shipped":
         return Text(stage, style="bright_green")
     return Text(stage)
 
@@ -631,6 +637,101 @@ class ArchiveConfirmScreen(ModalScreen[bool | None]):
             self.dismiss(True)
 
 
+class ShippedReviewScreen(ModalScreen[bool | None]):
+    """Modal screen for reviewing ship output and archiving."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ShippedReviewScreen {
+        align: center middle;
+        height: 100%;
+    }
+
+    #shipped-container {
+        width: 80;
+        height: auto;
+        max-height: 80%;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+
+    #shipped-title {
+        text-align: center;
+        text-style: bold;
+        color: $text;
+        margin-bottom: 1;
+    }
+
+    #shipped-content {
+        height: auto;
+        max-height: 70vh;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+
+    #shipped-buttons {
+        height: auto;
+        align: center middle;
+        padding-top: 1;
+    }
+
+    #shipped-buttons Button {
+        margin: 0 1;
+    }
+
+    #shipped-buttons Button:focus {
+        text-style: bold reverse;
+    }
+    """
+
+    def __init__(self, content: str, lode_title: str):
+        super().__init__()
+        self._content = content
+        self._lode_title = lode_title
+
+    def compose(self) -> ComposeResult:
+        title = "Ship Complete"
+        if self._lode_title:
+            title = f"Ship Complete - {self._lode_title}"
+        with Vertical(id="shipped-container"):
+            yield Static(title, id="shipped-title")
+            yield Static(self._content, id="shipped-content")
+            with Horizontal(id="shipped-buttons"):
+                yield Button("Cancel", id="shipped-cancel", variant="default")
+                yield Button("Archive", id="shipped-archive", variant="error")
+
+    def on_mount(self) -> None:
+        self.query_one("#shipped-cancel").focus()
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.focused
+        buttons = list(self.query("#shipped-buttons Button"))
+
+        if event.key == "right" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx + 1) % len(buttons)].focus()
+        elif event.key == "left" and focused in buttons:
+            event.prevent_default()
+            event.stop()
+            idx = buttons.index(focused)
+            buttons[(idx - 1) % len(buttons)].focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "shipped-cancel":
+            self.dismiss(None)
+        elif event.button.id == "shipped-archive":
+            self.dismiss(True)
+
+
 class LegendScreen(ModalScreen):
     """Modal screen showing the symbol legend."""
 
@@ -682,6 +783,8 @@ class LegendScreen(ModalScreen):
         t.append("  error\n", style="bright_black")
         t.append(f"  {STATUS_NEW}", style="bright_black")
         t.append("  new\n", style="bright_black")
+        t.append(f"  {STATUS_SHIPPED}", style="bright_green")
+        t.append("  shipped\n", style="bright_black")
 
         t.append("\n")
 
@@ -998,8 +1101,8 @@ class HopperApp(App):
         """
         table = self.query_one("#lode-table", LodeTable)
 
-        # Build rows from lodes (mill first, then refine, then ship)
-        stage_order = {"mill": 0, "refine": 1, "ship": 2}
+        # Build rows from lodes (mill first, then refine, then ship, then shipped)
+        stage_order = {"mill": 0, "refine": 1, "ship": 2, "shipped": 3}
         rows = [
             lode_to_row(s)
             for s in sorted(self._lodes, key=lambda s: stage_order.get(s.get("stage", ""), 3))
@@ -1234,6 +1337,8 @@ class HopperApp(App):
         elif lode.get("stage") == "ship" and lode.get("state") == "ready":
             # Refine complete, ready to ship - review changes before shipping
             self._review_ship(lode, project_path)
+        elif lode.get("stage") == "shipped":
+            self._review_shipped(lode)
         else:
             # Lode is not active - spawn runner based on stage
             if not spawn_claude(lode["id"], project_path):
@@ -1382,6 +1487,24 @@ class HopperApp(App):
             self.refresh_table()
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)
+
+    def _review_shipped(self, lode: dict) -> None:
+        """Open the shipped review modal for a shipped lode."""
+        lode_id = lode["id"]
+        output_path = get_lode_dir(lode_id) / "ship_out.md"
+        try:
+            content = output_path.read_text()
+        except FileNotFoundError:
+            content = "No output available."
+
+        title = lode.get("title", "")
+
+        def on_result(result: bool | None) -> None:
+            if result:
+                archive_lode(self._lodes, lode_id)
+            self.refresh_table()
+
+        self.push_screen(ShippedReviewScreen(content, title), on_result)
 
 
 def run_tui(server=None) -> int:

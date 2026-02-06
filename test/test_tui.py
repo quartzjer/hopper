@@ -15,6 +15,7 @@ from hopper.tui import (
     STATUS_ERROR,
     STATUS_NEW,
     STATUS_RUNNING,
+    STATUS_SHIPPED,
     STATUS_STUCK,
     BacklogInputScreen,
     FileViewerScreen,
@@ -126,6 +127,14 @@ def test_lode_to_row_task_state():
     assert row.status == STATUS_RUNNING
 
 
+def test_lode_to_row_shipped_stage():
+    """Shipped stage always shows shipped icon regardless of state."""
+    session = {"id": "abcd1234", "stage": "shipped", "created_at": 1000, "state": "ready"}
+    row = lode_to_row(session)
+    assert row.status == STATUS_SHIPPED
+    assert row.stage == "shipped"
+
+
 def test_lode_to_row_title():
     """lode_to_row maps title and defaults missing title to empty string."""
     session_with_title = {
@@ -226,6 +235,13 @@ def test_format_stage_text_ship():
     """format_stage_text returns bright_green for ship."""
     text = format_stage_text("ship")
     assert str(text) == "ship"
+    assert text.style == "bright_green"
+
+
+def test_format_stage_text_shipped():
+    """format_stage_text returns bright_green for shipped."""
+    text = format_stage_text("shipped")
+    assert str(text) == "shipped"
     assert text.style == "bright_green"
 
 
@@ -414,6 +430,19 @@ async def test_app_with_lodes():
         table = app.query_one("#lode-table")
         # 2 sessions + 1 hint row
         assert table.row_count == 3
+
+
+@pytest.mark.asyncio
+async def test_app_with_shipped_lode():
+    """Shipped lodes should be displayed in the lode table."""
+    sessions = [
+        {"id": "aaaa1111", "stage": "shipped", "created_at": 1000},
+    ]
+    server = MockServer(sessions)
+    app = HopperApp(server=server)
+    async with app.run_test():
+        table = app.query_one("#lode-table")
+        assert table.row_count == 2  # 1 lode + 1 hint row
 
 
 @pytest.mark.asyncio
@@ -1737,6 +1766,7 @@ async def test_legend_contains_all_symbols():
         assert STATUS_STUCK in text
         assert STATUS_ERROR in text
         assert STATUS_NEW in text
+        assert STATUS_SHIPPED in text
         assert AUTO_ON in text
         assert AUTO_OFF in text
         assert "▸" in text
@@ -1761,6 +1791,27 @@ class ShipReviewTestApp(App):
             self.review_result = r
 
         self.push_screen(ShipReviewScreen(diff_stat=self._diff_stat), capture_result)
+
+
+class ShippedReviewTestApp(App):
+    """Test app wrapper for ShippedReviewScreen."""
+
+    def __init__(self, content: str = "", lode_title: str = ""):
+        super().__init__()
+        self.review_result = "not_set"  # sentinel value
+        self._content = content
+        self._lode_title = lode_title
+
+    def on_mount(self) -> None:
+        from hopper.tui import ShippedReviewScreen
+
+        def capture_result(r):
+            self.review_result = r
+
+        self.push_screen(
+            ShippedReviewScreen(content=self._content, lode_title=self._lode_title),
+            capture_result,
+        )
 
 
 @pytest.mark.asyncio
@@ -1952,6 +2003,52 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
             assert len(spawned) == 1
             assert spawned[0]["sid"] == session["id"]
             assert spawned[0]["fg"] is False
+
+
+@pytest.mark.asyncio
+async def test_shipped_review_has_buttons():
+    """ShippedReviewScreen renders Cancel and Archive buttons."""
+    from textual.widgets import Button
+
+    app = ShippedReviewTestApp(content="Done", lode_title="Ship Title")
+    async with app.run_test():
+        cancel = app.screen.query_one("#shipped-cancel", Button)
+        archive = app.screen.query_one("#shipped-archive", Button)
+        assert cancel.label == "Cancel"
+        assert archive.label == "Archive"
+
+
+@pytest.mark.asyncio
+async def test_shipped_review_cancel_button():
+    """Cancel button dismisses shipped review with None."""
+    app = ShippedReviewTestApp(content="Done")
+    async with app.run_test() as pilot:
+        # Cancel is focused by default
+        await pilot.press("enter")
+        assert app.review_result is None
+
+
+@pytest.mark.asyncio
+async def test_shipped_review_archive_button():
+    """Archive button dismisses shipped review with True."""
+    app = ShippedReviewTestApp(content="Done")
+    async with app.run_test() as pilot:
+        await pilot.press("right")
+        await pilot.press("enter")
+        assert app.review_result is True
+
+
+@pytest.mark.asyncio
+async def test_enter_on_shipped_calls_review_shipped():
+    """Enter on a shipped lode should call _review_shipped."""
+    session = {"id": "aaaa1111", "stage": "shipped", "state": "ready", "created_at": 1000}
+    server = MockServer([session])
+    app = HopperApp(server=server)
+
+    with patch.object(app, "_review_shipped") as mock_review:
+        async with app.run_test() as pilot:
+            await pilot.press("enter")
+            mock_review.assert_called_once_with(session)
 
 
 def test_action_view_files_noop_when_backlog_focused():

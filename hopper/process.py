@@ -78,7 +78,7 @@ STAGES = {
     "ship": {
         "prompt": "ship",
         "done_status": "Ship complete",
-        "next_stage": "",
+        "next_stage": "shipped",
         "always_dismiss": True,
         "input_from": "refine",
     },

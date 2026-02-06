@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from hopper.process import ProcessRunner, run_process
+from hopper.process import STAGES, ProcessRunner, run_process
 
 CLAUDE_SESSIONS = {
     "mill": {"session_id": "11111111-1111-1111-1111-111111111111", "started": False},
@@ -45,6 +45,11 @@ def _mock_conn(emitted=None):
     else:
         mock.emit = MagicMock(return_value=True)
     return mock
+
+
+def test_ship_next_stage_is_shipped():
+    """Ship stage should transition to shipped on completion."""
+    assert STAGES["ship"]["next_stage"] == "shipped"
 
 
 # ---------------------------------------------------------------------------
@@ -964,8 +969,8 @@ class TestShipStage:
         ):
             assert runner.run() == 0
 
-    def test_no_stage_transition_on_completion(self, tmp_path):
-        """Ship has no next stage — no stage transition emitted."""
+    def test_emits_shipped_stage_transition_on_completion(self, tmp_path):
+        """Ship emits a stage transition to shipped after completion."""
         runner = ProcessRunner("test-id", Path("/tmp/test.sock"), "ship")
         emitted = []
         session_dir, project_dir, mock_project = self._setup_ship(tmp_path)
@@ -994,7 +999,7 @@ class TestShipStage:
             and "Ship complete" in e[1]["status"]
             for e in emitted
         )
-        assert not any(e[0] == "lode_update" for e in emitted)
+        assert any(e[0] == "lode_update" and e[1]["stage"] == "shipped" for e in emitted)
 
 
 # ---------------------------------------------------------------------------
