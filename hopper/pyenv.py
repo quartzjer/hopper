@@ -37,11 +37,9 @@ def create_venv(worktree_path: Path) -> bool:
         result = subprocess.run(
             [sys.executable, "-m", "venv", str(venv_path)],
             cwd=str(worktree_path),
-            capture_output=True,
-            text=True,
         )
         if result.returncode != 0:
-            logger.error(f"venv creation failed: {result.stderr.strip()}")
+            logger.error(f"venv creation failed (exit code {result.returncode})")
             return False
         return True
     except (FileNotFoundError, subprocess.SubprocessError) as e:
@@ -67,11 +65,9 @@ def install_editable(worktree_path: Path) -> bool:
         result = subprocess.run(
             [str(venv_pip), "install", "-e", ".[dev]"],
             cwd=str(worktree_path),
-            capture_output=True,
-            text=True,
         )
         if result.returncode != 0:
-            logger.error(f"pip install failed: {result.stderr.strip()}")
+            logger.error(f"pip install failed (exit code {result.returncode})")
             return False
         return True
     except (FileNotFoundError, subprocess.SubprocessError) as e:

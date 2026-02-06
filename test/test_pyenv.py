@@ -38,7 +38,6 @@ class TestCreateVenv:
         """Returns False when venv creation fails."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
-            mock_run.return_value.stderr = "error"
             result = create_venv(tmp_path)
         assert result is False
 
@@ -85,7 +84,6 @@ class TestInstallEditable:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
-            mock_run.return_value.stderr = "error"
             result = install_editable(tmp_path)
 
         assert result is False
