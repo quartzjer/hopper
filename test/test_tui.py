@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 from textual.app import App
 
+from hopper.lodes import format_age
 from hopper.projects import Project
 from hopper.tui import (
     AUTO_OFF,
@@ -42,6 +43,7 @@ def test_lode_to_row_new():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "new",
         "active": True,
     }
@@ -49,6 +51,35 @@ def test_lode_to_row_new():
     assert row.id == "abcd1234"
     assert row.status == STATUS_NEW
     assert row.stage == "mill"
+    assert row.last == row.age
+
+
+def test_lode_to_row_last_uses_updated_at():
+    """last uses updated_at while age uses created_at."""
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "updated_at": 2000,
+        "state": "new",
+        "active": True,
+    }
+    row = lode_to_row(session)
+    assert row.age == format_age(1000)
+    assert row.last == format_age(2000)
+
+
+def test_lode_to_row_last_fallback_no_updated_at():
+    """last falls back to created_at when updated_at is missing."""
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "state": "new",
+        "active": True,
+    }
+    row = lode_to_row(session)
+    assert row.last == row.age
 
 
 def test_lode_to_row_running():
@@ -57,6 +88,7 @@ def test_lode_to_row_running():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "running",
         "active": True,
     }
@@ -72,6 +104,7 @@ def test_lode_to_row_stuck():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "stuck",
         "active": True,
     }
@@ -87,6 +120,7 @@ def test_lode_to_row_error():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "error",
         "active": True,
     }
@@ -98,14 +132,26 @@ def test_lode_to_row_error():
 
 def test_lode_to_row_auto():
     """Auto field is passed through to Row."""
-    session = {"id": "abcd1234", "stage": "mill", "created_at": 1000, "auto": True}
+    session = {
+        "id": "abcd1234",
+        "stage": "mill",
+        "created_at": 1000,
+        "updated_at": 1000,
+        "auto": True,
+    }
     row = lode_to_row(session)
     assert row.auto is True
 
 
 def test_lode_to_row_refine_stage():
     """Refine session has refine stage indicator."""
-    session = {"id": "abcd1234", "stage": "refine", "created_at": 1000, "state": "new"}
+    session = {
+        "id": "abcd1234",
+        "stage": "refine",
+        "created_at": 1000,
+        "updated_at": 1000,
+        "state": "new",
+    }
     row = lode_to_row(session)
     assert row.stage == "refine"
 
@@ -116,6 +162,7 @@ def test_lode_to_row_completed():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "completed",
         "active": True,
     }
@@ -129,6 +176,7 @@ def test_lode_to_row_ready():
         "id": "abcd1234",
         "stage": "refine",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "ready",
         "active": True,
     }
@@ -142,6 +190,7 @@ def test_lode_to_row_task_state():
         "id": "abcd1234",
         "stage": "refine",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "audit",
         "active": True,
     }
@@ -151,7 +200,13 @@ def test_lode_to_row_task_state():
 
 def test_lode_to_row_shipped_stage():
     """Shipped stage always shows shipped icon regardless of state."""
-    session = {"id": "abcd1234", "stage": "shipped", "created_at": 1000, "state": "ready"}
+    session = {
+        "id": "abcd1234",
+        "stage": "shipped",
+        "created_at": 1000,
+        "updated_at": 1000,
+        "state": "ready",
+    }
     row = lode_to_row(session)
     assert row.status == STATUS_SHIPPED
     assert row.stage == "shipped"
@@ -163,13 +218,20 @@ def test_lode_to_row_title():
         "id": "abcd1234",
         "stage": "mill",
         "created_at": 1000,
+        "updated_at": 1000,
         "state": "new",
         "title": "Auth Flow",
     }
     row_with_title = lode_to_row(session_with_title)
     assert row_with_title.title == "Auth Flow"
 
-    session_without_title = {"id": "efgh5678", "stage": "mill", "created_at": 1000, "state": "new"}
+    session_without_title = {
+        "id": "efgh5678",
+        "stage": "mill",
+        "created_at": 1000,
+        "updated_at": 1000,
+        "state": "new",
+    }
     row_without_title = lode_to_row(session_without_title)
     assert row_without_title.title == ""
 
@@ -213,6 +275,7 @@ def test_lode_to_row_disconnected():
         "state": "running",
         "active": False,
         "created_at": 1000,
+        "updated_at": 1000,
     }
     row = lode_to_row(lode)
     assert row.status == STATUS_DISCONNECTED
@@ -226,6 +289,7 @@ def test_lode_to_row_shipped_inactive():
         "state": "running",
         "active": False,
         "created_at": 1000,
+        "updated_at": 1000,
     }
     row = lode_to_row(lode)
     assert row.status == STATUS_SHIPPED
@@ -239,6 +303,7 @@ def test_lode_to_row_active_shows_state_icon():
         "state": "running",
         "active": True,
         "created_at": 1000,
+        "updated_at": 1000,
     }
     row = lode_to_row(lode)
     assert row.status == STATUS_RUNNING
@@ -364,6 +429,7 @@ def test_row_dataclass():
         id="test1234",
         stage="mill",
         age="1m",
+        last="5m",
         status=STATUS_RUNNING,
         auto=True,
         project="proj",
@@ -373,6 +439,7 @@ def test_row_dataclass():
     assert row.id == "test1234"
     assert row.stage == "mill"
     assert row.age == "1m"
+    assert row.last == "5m"
     assert row.status == STATUS_RUNNING
     assert row.auto is True
     assert row.project == "proj"

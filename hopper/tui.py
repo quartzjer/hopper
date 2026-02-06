@@ -102,6 +102,7 @@ class Row:
     id: str
     stage: str  # "mill", "refine", "ship", or "shipped"
     age: str  # formatted age string
+    last: str  # formatted time since last mutation
     # STATUS_RUNNING, STATUS_STUCK, STATUS_NEW, STATUS_ERROR, STATUS_SHIPPED, STATUS_DISCONNECTED
     status: str
     auto: bool = True  # Whether auto-advance is enabled
@@ -132,6 +133,7 @@ def lode_to_row(lode: dict) -> Row:
         id=lode["id"],
         stage=stage,
         age=format_age(lode["created_at"]),
+        last=format_age(lode.get("updated_at", lode["created_at"])),
         status=status,
         auto=lode.get("auto", False),
         project=lode.get("project", ""),
@@ -900,6 +902,7 @@ class LodeTable(DataTable):
     COL_ID = "id"
     COL_PROJECT = "project"
     COL_AGE = "age"
+    COL_LAST = "last"
     COL_TITLE = "title"
     COL_STATUS_TEXT = "status_text"
 
@@ -914,7 +917,8 @@ class LodeTable(DataTable):
         self.add_column("stage", key=self.COL_STAGE)
         self.add_column("id", key=self.COL_ID)
         self.add_column("project", key=self.COL_PROJECT)
-        self.add_column("last", key=self.COL_AGE)
+        self.add_column("age", key=self.COL_AGE)
+        self.add_column("last", key=self.COL_LAST)
         self.add_column("title", key=self.COL_TITLE, width=18)
         self.add_column("status", key=self.COL_STATUS_TEXT)
 
@@ -1174,6 +1178,7 @@ class HopperApp(App):
                 table.update_cell(row.id, LodeTable.COL_ID, row.id)
                 table.update_cell(row.id, LodeTable.COL_PROJECT, row.project)
                 table.update_cell(row.id, LodeTable.COL_AGE, row.age)
+                table.update_cell(row.id, LodeTable.COL_LAST, row.last)
                 table.update_cell(row.id, LodeTable.COL_TITLE, row.title)
                 table.update_cell(
                     row.id,
@@ -1192,6 +1197,7 @@ class HopperApp(App):
                     row.id,
                     row.project,
                     row.age,
+                    row.last,
                     row.title,
                     format_status_label(row.status_text, row.status),
                     key=row.id,
@@ -1204,7 +1210,7 @@ class HopperApp(App):
         if has_hint:
             table.update_cell(HINT_LODE, LodeTable.COL_STATUS_TEXT, hint)
         else:
-            table.add_row("", "", "", "", "", "", "", hint, key=HINT_LODE)
+            table.add_row("", "", "", "", "", "", "", "", hint, key=HINT_LODE)
 
     def refresh_backlog(self) -> None:
         """Refresh the backlog table using incremental updates."""
