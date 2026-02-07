@@ -5,7 +5,14 @@
 
 from unittest.mock import MagicMock, patch
 
-from hopper.git import create_worktree, current_branch, get_diff_stat, is_dirty
+from hopper.git import (
+    create_worktree,
+    current_branch,
+    delete_branch,
+    get_diff_stat,
+    is_dirty,
+    remove_worktree,
+)
 
 
 class TestCreateWorktree:
@@ -171,3 +178,75 @@ class TestGetDiffStat:
             result = get_diff_stat("/worktree")
 
         assert result == ""
+
+
+class TestRemoveWorktree:
+    def test_success(self):
+        """Removes worktree with correct git command."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            result = remove_worktree("/repo", "/path/to/worktree")
+
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["git", "worktree", "remove", "/path/to/worktree"],
+            cwd="/repo",
+            capture_output=True,
+            text=True,
+        )
+
+    def test_failure_returns_false(self):
+        """Returns False when git command fails."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "fatal: not a working tree"
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = remove_worktree("/repo", "/path/to/worktree")
+
+        assert result is False
+
+    def test_git_not_found(self):
+        """Returns False when git is not installed."""
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = remove_worktree("/repo", "/path/to/worktree")
+
+        assert result is False
+
+
+class TestDeleteBranch:
+    def test_success(self):
+        """Deletes branch with correct git command."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            result = delete_branch("/repo", "hopper-abc12345")
+
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["git", "branch", "-d", "hopper-abc12345"],
+            cwd="/repo",
+            capture_output=True,
+            text=True,
+        )
+
+    def test_failure_returns_false(self):
+        """Returns False when git command fails."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "error: branch not fully merged"
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = delete_branch("/repo", "hopper-abc12345")
+
+        assert result is False
+
+    def test_git_not_found(self):
+        """Returns False when git is not installed."""
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = delete_branch("/repo", "hopper-abc12345")
+
+        assert result is False

@@ -26,10 +26,12 @@ from hopper.backlog import (
     find_by_prefix as find_backlog_by_prefix,
 )
 from hopper.claude import spawn_claude
+from hopper.git import delete_branch, remove_worktree
 from hopper.lodes import (
     archive_lode,
     create_lode,
     current_time_ms,
+    get_lode_dir,
     load_archived_lodes,
     load_lodes,
     reset_lode_claude_stage,
@@ -139,6 +141,7 @@ class Server:
             if archived:
                 self.archived_lodes.append(archived)
                 logger.info(f"Startup: auto-archived shipped lode {lode['id']}")
+                self._cleanup_worktree(archived)
 
         # Remove stale socket file
         if self.socket_path.exists():
@@ -280,6 +283,23 @@ class Server:
                 self.archived_lodes.append(archived)
                 logger.info(f"Lode {lode_id} auto-archived")
                 self.broadcast({"type": "lode_archived", "lode": archived})
+                self._cleanup_worktree(archived)
+
+    def _cleanup_worktree(self, lode: dict) -> None:
+        """Remove git worktree and branch for an archived lode."""
+        lode_id = lode["id"]
+        worktree_path = get_lode_dir(lode_id) / "worktree"
+        if not worktree_path.is_dir():
+            return
+        project_name = lode.get("project", "")
+        if not project_name:
+            return
+        project = find_project(project_name)
+        if not project:
+            logger.warning(f"Cleanup skipped for {lode_id}: project not found")
+            return
+        remove_worktree(project.path, str(worktree_path))
+        delete_branch(project.path, f"hopper-{lode_id}")
 
     def _register_lode_client(
         self,

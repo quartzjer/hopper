@@ -280,7 +280,8 @@ def update_lode_stage(lodes: list[dict], lode_id: str, stage: str) -> dict | Non
 def archive_lode(lodes: list[dict], lode_id: str) -> dict | None:
     """Archive a lode: append to archived.jsonl and remove from active list.
 
-    The lode directory is left intact.
+    The lode directory is left intact; git worktree and branch cleanup
+    is handled by the caller.
     Returns the archived lode or None if not found.
     """
     for i, lode in enumerate(lodes):

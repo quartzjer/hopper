@@ -105,3 +105,55 @@ def get_diff_stat(worktree_path: str) -> str:
         except (FileNotFoundError, subprocess.SubprocessError):
             pass
     return ""
+
+
+def remove_worktree(repo_dir: str, worktree_path: str) -> bool:
+    """Remove a git worktree.
+
+    Args:
+        repo_dir: Path to the main git repository.
+        worktree_path: Path to worktree to remove.
+
+    Returns:
+        True on success, False on failure.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "remove", worktree_path],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(f"git worktree remove failed: {result.stderr.strip()}")
+            return False
+        return True
+    except FileNotFoundError:
+        logger.warning("git command not found")
+        return False
+
+
+def delete_branch(repo_dir: str, branch_name: str) -> bool:
+    """Delete a git branch with safe mode (-d).
+
+    Args:
+        repo_dir: Path to the main git repository.
+        branch_name: Branch name to delete.
+
+    Returns:
+        True on success, False on failure.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "branch", "-d", branch_name],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(f"git branch -d failed: {result.stderr.strip()}")
+            return False
+        return True
+    except FileNotFoundError:
+        logger.warning("git command not found")
+        return False

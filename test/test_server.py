@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from hopper.lodes import save_lodes
+from hopper.projects import Project
 from hopper.server import Server, get_git_hash
 
 
@@ -149,6 +150,116 @@ def test_startup_archives_shipped_lodes(socket_path, temp_config, make_lode):
     finally:
         srv.stop()
         thread.join(timeout=2)
+
+
+def test_cleanup_worktree_on_startup_archive(socket_path, temp_config, make_lode):
+    """Startup archive triggers worktree and branch cleanup."""
+    shipped_lode = make_lode(id="test-id", stage="shipped", project="myproject")
+    save_lodes([shipped_lode])
+    worktree_dir = temp_config / "lodes" / shipped_lode["id"] / "worktree"
+    worktree_dir.mkdir(parents=True)
+
+    with (
+        patch(
+            "hopper.server.find_project", return_value=Project(path="/fake/repo", name="myproject")
+        ),
+        patch("hopper.server.remove_worktree") as mock_remove_worktree,
+        patch("hopper.server.delete_branch") as mock_delete_branch,
+    ):
+        srv = Server(socket_path)
+        thread = threading.Thread(target=srv.start, daemon=True)
+        thread.start()
+
+        try:
+            for _ in range(50):
+                if socket_path.exists():
+                    break
+                time.sleep(0.1)
+            else:
+                raise TimeoutError("Server did not start")
+
+            for _ in range(50):
+                if mock_remove_worktree.called and mock_delete_branch.called:
+                    break
+                time.sleep(0.1)
+
+            mock_remove_worktree.assert_called_once_with("/fake/repo", str(worktree_dir))
+            mock_delete_branch.assert_called_once_with("/fake/repo", f"hopper-{shipped_lode['id']}")
+        finally:
+            srv.stop()
+            thread.join(timeout=2)
+
+
+def test_cleanup_skipped_without_worktree_dir(socket_path, temp_config, make_lode):
+    """Cleanup is skipped when archived lode has no worktree directory."""
+    shipped_lode = make_lode(id="test-id", stage="shipped", project="myproject")
+    save_lodes([shipped_lode])
+
+    with (
+        patch(
+            "hopper.server.find_project", return_value=Project(path="/fake/repo", name="myproject")
+        ),
+        patch("hopper.server.remove_worktree") as mock_remove_worktree,
+        patch("hopper.server.delete_branch") as mock_delete_branch,
+    ):
+        srv = Server(socket_path)
+        thread = threading.Thread(target=srv.start, daemon=True)
+        thread.start()
+
+        try:
+            for _ in range(50):
+                if socket_path.exists():
+                    break
+                time.sleep(0.1)
+            else:
+                raise TimeoutError("Server did not start")
+
+            for _ in range(50):
+                if not srv.lodes:
+                    break
+                time.sleep(0.1)
+
+            mock_remove_worktree.assert_not_called()
+            mock_delete_branch.assert_not_called()
+        finally:
+            srv.stop()
+            thread.join(timeout=2)
+
+
+def test_cleanup_skipped_when_project_not_found(socket_path, temp_config, make_lode):
+    """Cleanup is skipped when archived lode project cannot be found."""
+    shipped_lode = make_lode(id="test-id", stage="shipped", project="myproject")
+    save_lodes([shipped_lode])
+    worktree_dir = temp_config / "lodes" / shipped_lode["id"] / "worktree"
+    worktree_dir.mkdir(parents=True)
+
+    with (
+        patch("hopper.server.find_project", return_value=None),
+        patch("hopper.server.remove_worktree") as mock_remove_worktree,
+        patch("hopper.server.delete_branch") as mock_delete_branch,
+    ):
+        srv = Server(socket_path)
+        thread = threading.Thread(target=srv.start, daemon=True)
+        thread.start()
+
+        try:
+            for _ in range(50):
+                if socket_path.exists():
+                    break
+                time.sleep(0.1)
+            else:
+                raise TimeoutError("Server did not start")
+
+            for _ in range(50):
+                if not srv.lodes:
+                    break
+                time.sleep(0.1)
+
+            mock_remove_worktree.assert_not_called()
+            mock_delete_branch.assert_not_called()
+        finally:
+            srv.stop()
+            thread.join(timeout=2)
 
 
 def test_server_broadcast_requires_type():
@@ -683,6 +794,49 @@ def test_auto_archive_shipped_on_disconnect(socket_path, server, temp_config, ma
     ]
     assert len(archived_entries) == 1
     assert archived_entries[0]["id"] == "test-id"
+
+
+def test_cleanup_worktree_on_disconnect_archive(socket_path, server, temp_config, make_lode):
+    """Disconnect archive triggers worktree and branch cleanup."""
+    lode = make_lode(
+        id="test-id",
+        stage="shipped",
+        state="ready",
+        status="Ship complete",
+        project="myproject",
+    )
+    server.lodes = [lode]
+    save_lodes(server.lodes)
+    worktree_dir = temp_config / "lodes" / lode["id"] / "worktree"
+    worktree_dir.mkdir(parents=True)
+
+    with (
+        patch(
+            "hopper.server.find_project", return_value=Project(path="/fake/repo", name="myproject")
+        ),
+        patch("hopper.server.remove_worktree") as mock_remove_worktree,
+        patch("hopper.server.delete_branch") as mock_delete_branch,
+    ):
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(str(socket_path))
+        client.settimeout(2.0)
+        msg = {"type": "lode_register", "lode_id": "test-id"}
+        client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+        for _ in range(50):
+            if "test-id" in server.lode_clients:
+                break
+            time.sleep(0.1)
+
+        client.close()
+
+        for _ in range(20):
+            time.sleep(0.1)
+            if not server.lodes:
+                break
+
+        mock_remove_worktree.assert_called_once_with("/fake/repo", str(worktree_dir))
+        mock_delete_branch.assert_called_once_with("/fake/repo", f"hopper-{lode['id']}")
 
 
 def test_no_auto_archive_non_shipped_on_disconnect(socket_path, server, temp_config, make_lode):
