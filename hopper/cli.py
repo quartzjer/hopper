@@ -699,6 +699,151 @@ def cmd_backlog(args: list[str]) -> int:
     return 0
 
 
+@command("lode", "Manage lodes")
+def cmd_lode(args: list[str]) -> int:
+    """Manage lodes — list, create, restart."""
+    import hopper.client as client
+    from hopper.projects import find_project
+
+    # Status icons — must match hopper/tui.py
+    STATUS_RUNNING = "●"
+    STATUS_STUCK = "◐"
+    STATUS_NEW = "○"
+    STATUS_ERROR = "✗"
+    STATUS_SHIPPED = "✓"
+    STATUS_DISCONNECTED = "⊘"
+    STAGE_ORDER = {"mill": 0, "refine": 1, "ship": 2, "shipped": 3}
+
+    def lode_icon(lode: dict) -> str:
+        """Derive status icon from lode dict. Matches tui.py lode_to_row logic."""
+        stage = lode.get("stage", "mill")
+        state = lode.get("state", "new")
+        if stage == "shipped":
+            icon = STATUS_SHIPPED
+        elif state == "new":
+            icon = STATUS_NEW
+        elif state == "error":
+            icon = STATUS_ERROR
+        elif state == "stuck":
+            icon = STATUS_STUCK
+        else:
+            icon = STATUS_RUNNING
+        if not lode.get("active", False) and stage != "shipped":
+            icon = STATUS_DISCONNECTED
+        return icon
+
+    def format_lode_line(lode: dict) -> str:
+        icon = lode_icon(lode)
+        stage = lode.get("stage", "mill")
+        lid = lode["id"]
+        project = lode.get("project", "")
+        title = lode.get("title", "")
+        status_text = lode.get("status", "")
+        return f"  {icon} {stage:<7} {lid}  {project:<16} {title:<22} {status_text}"
+
+    parser = make_parser("lode", "Manage lodes")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default="active",
+        choices=["active", "archived", "create", "restart"],
+        help="Action to perform (default: active)",
+    )
+    parser.add_argument("args", nargs="*", help="Action arguments")
+    parser.add_argument(
+        "--no-spawn",
+        action="store_true",
+        help="Don't spawn Claude after creating (create only)",
+    )
+    try:
+        parsed = parse_args(parser, args)
+    except ArgumentError as e:
+        print(e)
+        return 1
+    except SystemExit:
+        return 0
+
+    action = parsed.action
+    extra = parsed.args or []
+    socket_path = _socket()
+
+    if action == "active":
+        err = require_server()
+        if err:
+            return err
+        lodes = client.list_lodes(socket_path)
+        lodes = [lode for lode in lodes if lode.get("stage") in STAGE_ORDER]
+        lodes.sort(key=lambda lode: STAGE_ORDER.get(lode.get("stage", "mill"), 99))
+        if not lodes:
+            print("No active lodes")
+            return 0
+        for lode in lodes:
+            print(format_lode_line(lode))
+        return 0
+
+    if action == "archived":
+        err = require_server()
+        if err:
+            return err
+        lodes = client.list_archived_lodes(socket_path)
+        lodes.sort(key=lambda lode: lode.get("updated_at", 0), reverse=True)
+        if not lodes:
+            print("No archived lodes")
+            return 0
+        for lode in lodes:
+            print(format_lode_line(lode))
+        return 0
+
+    if action == "create":
+        if len(extra) < 1:
+            print("Usage: hop lode create <project> <scope>")
+            return 1
+        project_name = extra[0]
+        scope = " ".join(extra[1:])
+        if not scope:
+            print("Usage: hop lode create <project> <scope>")
+            return 1
+        project = find_project(project_name)
+        if not project:
+            print(f"Project not found: {project_name}")
+            return 1
+        err = require_server()
+        if err:
+            return err
+        spawn = not parsed.no_spawn
+        lode = client.create_lode(socket_path, project_name, scope, spawn=spawn)
+        if lode:
+            print(f"Created lode {lode['id']} ({project_name})")
+        else:
+            print(f"Created lode for {project_name}")
+        return 0
+
+    if action == "restart":
+        if len(extra) < 1:
+            print("Usage: hop lode restart <lode-id>")
+            return 1
+        lode_id = extra[0]
+        err = require_server()
+        if err:
+            return err
+        lode = client.get_lode(socket_path, lode_id)
+        if not lode:
+            print(f"Lode not found: {lode_id}")
+            return 1
+        if lode.get("active"):
+            print(f"Cannot restart: lode {lode_id} is active")
+            return 1
+        stage = lode.get("stage", "")
+        if stage not in ("mill", "refine", "ship"):
+            print(f"Cannot restart: lode {lode_id} stage is {stage}")
+            return 1
+        client.restart_lode(socket_path, lode_id, stage)
+        print(f"Restarting {stage} for {lode_id}")
+        return 0
+
+    return 0
+
+
 @command("ping", "Check if server is running")
 def cmd_ping(args: list[str]) -> int:
     """Ping the server."""

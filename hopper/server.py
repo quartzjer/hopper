@@ -182,7 +182,7 @@ class Server:
                 self.socket_path.unlink()
 
     # Message types that only read state and send a response (safe from any thread)
-    _READ_ONLY_TYPES = frozenset({"connect", "ping", "lode_list", "backlog_list"})
+    _READ_ONLY_TYPES = frozenset({"connect", "ping", "lode_list", "backlog_list", "archived_list"})
 
     def _handle_client(self, conn: socket.socket) -> None:
         """Handle a client connection.
@@ -370,6 +370,9 @@ class Server:
             items_data = [item.to_dict() for item in self.backlog]
             self._send_response(conn, {"type": "backlog_list", "items": items_data})
 
+        elif msg_type == "archived_list":
+            self._send_response(conn, {"type": "archived_list", "lodes": self.archived_lodes})
+
     def _handle_mutation(self, message: dict, conn: socket.socket | None) -> None:
         """Handle a state-mutating message. Runs on the event loop thread."""
         msg_type = message.get("type")
@@ -396,6 +399,8 @@ class Server:
                 save_lodes(self.lodes)
             logger.info(f"Lode {lode['id']} created project={project}")
             self.broadcast({"type": "lode_created", "lode": lode})
+            if conn:
+                self._send_response(conn, {"type": "lode_created", "lode": lode})
             # Auto-spawn if requested
             if message.get("spawn"):
                 proj = find_project(project)

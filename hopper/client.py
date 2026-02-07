@@ -251,7 +251,7 @@ def connect(socket_path: Path, lode_id: str | None = None, timeout: float = 2.0)
 
     Returns:
         Connected response dict with keys:
-        - tmux: {"session": str, "window": str} or None
+        - tmux: {"session": str, "pane": str} or None
         - lode: lode dict if lode_id provided and found, else None
         - lode_found: bool if lode_id was provided
         Returns None if server is unreachable.
@@ -313,6 +313,62 @@ def get_lode(socket_path: Path, lode_id: str, timeout: float = 2.0) -> dict | No
     if response is None:
         return None
     return response.get("lode")
+
+
+def list_lodes(socket_path: Path, timeout: float = 2.0) -> list[dict]:
+    """List all active lodes from the server."""
+    response = send_message(
+        socket_path, {"type": "lode_list"}, timeout=timeout, wait_for_response=True
+    )
+    if response and response.get("type") == "lode_list":
+        return response.get("lodes", [])
+    return []
+
+
+def list_archived_lodes(socket_path: Path, timeout: float = 2.0) -> list[dict]:
+    """List all archived lodes from the server."""
+    response = send_message(
+        socket_path,
+        {"type": "archived_list"},
+        timeout=timeout,
+        wait_for_response=True,
+    )
+    if response and response.get("type") == "archived_list":
+        return response.get("lodes", [])
+    return []
+
+
+def create_lode(
+    socket_path: Path,
+    project: str,
+    scope: str,
+    spawn: bool = True,
+    timeout: float = 5.0,
+) -> dict | None:
+    """Create a new lode via the server. Returns the created lode dict or None."""
+    response = send_message(
+        socket_path,
+        {"type": "lode_create", "project": project, "scope": scope, "spawn": spawn},
+        timeout=timeout,
+        wait_for_response=True,
+    )
+    if response and response.get("type") == "lode_created":
+        return response.get("lode")
+    return None
+
+
+def restart_lode(socket_path: Path, lode_id: str, stage: str, timeout: float = 2.0) -> bool:
+    """Restart a lode's current stage session. Fire-and-forget."""
+    return _fire_and_forget(
+        socket_path,
+        {
+            "type": "lode_reset_claude_stage",
+            "lode_id": lode_id,
+            "claude_stage": stage,
+            "spawn": True,
+        },
+        timeout=timeout,
+    )
 
 
 def _fire_and_forget(socket_path: Path, msg: dict, timeout: float = 2.0) -> bool:
