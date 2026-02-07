@@ -75,7 +75,17 @@ This must be **empty**. If it shows commits, the branch has work that wasn't inc
 
 Look for a Makefile, CI config, or test setup in the project. Run whatever validation is available (tests, linting, type checks). If tests fail due to your merge resolution, fix the issues.
 
-### 6. Signal completion
+### 6. Push to remote
+
+Push the merged main branch to the remote:
+
+```
+git push
+```
+
+If there's no remote configured, skip this step.
+
+### 7. Signal completion
 
 When the merge is complete, validated, and main is clean:
 
