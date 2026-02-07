@@ -469,10 +469,14 @@ class MockServer:
         self.git_hash = git_hash
         self.started_at = started_at
         self.broadcasts: list[dict] = []
+        self.events: list[dict] = []
 
     def broadcast(self, message: dict) -> bool:
         self.broadcasts.append(message)
         return True
+
+    def enqueue(self, message: dict) -> None:
+        self.events.append(message)
 
 
 @pytest.mark.asyncio
@@ -643,7 +647,6 @@ async def test_archive_view_guards_actions(make_lode):
         patch.object(app, "_require_projects") as mock_require_projects,
         patch.object(app, "_get_selected_lode_id") as mock_selected_lode_id,
         patch.object(app, "_get_lode") as mock_get_lode,
-        patch("hopper.tui.archive_lode") as mock_archive_lode,
     ):
         async with app.run_test() as pilot:
             await pilot.press("left")
@@ -656,7 +659,8 @@ async def test_archive_view_guards_actions(make_lode):
     mock_require_projects.assert_not_called()
     mock_selected_lode_id.assert_not_called()
     mock_get_lode.assert_not_called()
-    mock_archive_lode.assert_not_called()
+    # No events should have been enqueued
+    assert server.events == []
 
 
 @pytest.mark.asyncio
@@ -669,14 +673,15 @@ async def test_archive_view_backlog_unaffected():
         BacklogItem(id="bl111111", project="proj", description="First", created_at=1000),
         BacklogItem(id="bl222222", project="proj", description="Second", created_at=2000),
     ]
-    app = HopperApp(server=MockServer([], backlog=items))
+    server = MockServer([], backlog=items)
+    app = HopperApp(server=server)
     async with app.run_test() as pilot:
         await pilot.press("left")
         assert app._archive_view is True
         await pilot.press("tab")
         assert isinstance(app.focused, BacklogTable)
         await pilot.press("d")
-        assert len(app._backlog) == 1
+        assert server.events == [{"type": "backlog_remove", "item_id": "bl111111"}]
         await pilot.press("right")
         assert app._archive_view is True
         await pilot.press("left")
@@ -746,20 +751,21 @@ async def test_archive_confirm_modal_arrows_do_not_toggle_archive_view(temp_conf
 
 @pytest.mark.asyncio
 async def test_toggle_auto_with_a(temp_config):
-    """a toggles auto on selected lode."""
+    """a enqueues auto toggle on selected lode."""
     sessions = [{"id": "aaaa1111", "stage": "mill", "created_at": 1000, "auto": False}]
     server = MockServer(sessions)
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
         await pilot.press("a")
-        assert sessions[0]["auto"] is True
-        assert server.broadcasts[-1]["type"] == "lode_updated"
-        assert server.broadcasts[-1]["lode"]["auto"] is True
+        assert len(server.events) == 1
+        assert server.events[0]["type"] == "lode_set_auto"
+        assert server.events[0]["lode_id"] == "aaaa1111"
+        assert server.events[0]["auto"] is True
 
 
 @pytest.mark.asyncio
 async def test_archive_with_d(temp_config):
-    """d archives selected lode when lode table is focused."""
+    """d enqueues archive for selected lode when lode table is focused."""
     sessions = [
         {"id": "aaaa1111", "stage": "mill", "created_at": 1000},
         {"id": "bbbb2222", "stage": "mill", "created_at": 2000},
@@ -767,10 +773,10 @@ async def test_archive_with_d(temp_config):
     server = MockServer(sessions)
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
-        table = app.query_one("#lode-table")
-        assert table.row_count == 3  # 2 lodes + hint
         await pilot.press("d")
-        assert table.row_count == 2  # 1 lode + hint
+        assert len(server.events) == 1
+        assert server.events[0]["type"] == "lode_archive"
+        assert server.events[0]["lode_id"] == "aaaa1111"
 
 
 @pytest.mark.asyncio
@@ -1357,9 +1363,8 @@ async def test_arrow_navigation_in_backlog():
 
 @pytest.mark.asyncio
 async def test_delete_backlog_item(temp_config):
-    """d should delete selected backlog item when backlog is focused."""
+    """d should enqueue backlog_remove when backlog is focused."""
     from hopper.backlog import BacklogItem
-    from hopper.tui import BacklogTable
 
     items = [
         BacklogItem(id="bl111111", project="proj", description="To delete", created_at=1000),
@@ -1370,18 +1375,14 @@ async def test_delete_backlog_item(temp_config):
     async with app.run_test() as pilot:
         # Switch to backlog table
         await pilot.press("tab")
-        table = app.query_one("#backlog-table", BacklogTable)
-        assert table.row_count == 3  # 2 items + hint
         # Delete first item
         await pilot.press("d")
-        assert table.row_count == 2  # 1 item + hint
-        assert len(app._backlog) == 1
-        assert app._backlog[0].id == "bl222222"
+        assert server.events == [{"type": "backlog_remove", "item_id": "bl111111"}]
 
 
 @pytest.mark.asyncio
 async def test_delete_archives_on_session_table():
-    """d should archive selected lode when session table is focused."""
+    """d should enqueue lode_archive when session table is focused."""
     from hopper.backlog import BacklogItem
 
     items = [
@@ -1394,16 +1395,14 @@ async def test_delete_archives_on_session_table():
     app = HopperApp(server=server)
     async with app.run_test() as pilot:
         # Focus is on session table by default
-        session_table = app.query_one("#lode-table")
-        assert session_table.row_count == 2  # 1 session + hint
-        # Press d - should archive session and leave backlog unchanged
+        # Press d - should enqueue archive and leave backlog unchanged
         await pilot.press("d")
-        assert session_table.row_count == 1  # hint only
+        assert server.events == [{"type": "lode_archive", "lode_id": "aaaa1111"}]
         assert len(app._backlog) == 1
 
 
 def test_action_delete_archives_lode():
-    """action_delete archives lode when lode table is focused."""
+    """action_delete enqueues archive when lode table is focused."""
     from hopper.tui import LodeTable
 
     sessions = [{"id": "aaaa1111", "stage": "mill", "created_at": 1000}]
@@ -1420,12 +1419,10 @@ def test_action_delete_archives_lode():
         patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
         patch("hopper.tui.get_lode_dir", return_value=lode_dir),
-        patch("hopper.tui.archive_lode") as mock_archive,
-        patch.object(app, "refresh_table") as mock_refresh,
     ):
         app.action_delete()
-    mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
-    mock_refresh.assert_called_once()
+    assert len(server.events) == 1
+    assert server.events[0] == {"type": "lode_archive", "lode_id": "aaaa1111"}
 
 
 def test_action_delete_shows_modal_for_unmerged_changes():
@@ -1449,13 +1446,11 @@ def test_action_delete_shows_modal_for_unmerged_changes():
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
         patch("hopper.tui.get_lode_dir", return_value=lode_dir),
         patch("hopper.tui.get_diff_stat", return_value=fake_diff),
-        patch("hopper.tui.archive_lode") as mock_archive,
         patch.object(app, "push_screen") as mock_push,
-        patch.object(app, "refresh_table"),
     ):
         app.action_delete()
 
-    mock_archive.assert_not_called()
+    assert server.events == []
     mock_push.assert_called_once()
     screen_arg = mock_push.call_args.args[0]
     assert isinstance(screen_arg, ArchiveConfirmScreen)
@@ -1479,13 +1474,11 @@ def test_action_delete_archives_immediately_without_worktree():
         patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=LodeTable()),
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
         patch("hopper.tui.get_lode_dir", return_value=lode_dir),
-        patch("hopper.tui.archive_lode") as mock_archive,
         patch.object(app, "push_screen") as mock_push,
-        patch.object(app, "refresh_table"),
     ):
         app.action_delete()
 
-    mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
+    assert server.events == [{"type": "lode_archive", "lode_id": "aaaa1111"}]
     mock_push.assert_not_called()
 
 
@@ -1509,13 +1502,11 @@ def test_action_delete_archives_immediately_with_empty_diff():
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
         patch("hopper.tui.get_lode_dir", return_value=lode_dir),
         patch("hopper.tui.get_diff_stat", return_value=""),
-        patch("hopper.tui.archive_lode") as mock_archive,
         patch.object(app, "push_screen") as mock_push,
-        patch.object(app, "refresh_table"),
     ):
         app.action_delete()
 
-    mock_archive.assert_called_once_with(app._lodes, "aaaa1111")
+    assert server.events == [{"type": "lode_archive", "lode_id": "aaaa1111"}]
     mock_push.assert_not_called()
 
 
@@ -1540,15 +1531,13 @@ def test_action_delete_cancel_does_not_archive():
         patch.object(app, "_get_selected_lode_id", return_value="aaaa1111"),
         patch("hopper.tui.get_lode_dir", return_value=lode_dir),
         patch("hopper.tui.get_diff_stat", return_value=fake_diff),
-        patch("hopper.tui.archive_lode") as mock_archive,
         patch.object(app, "push_screen") as mock_push,
-        patch.object(app, "refresh_table"),
     ):
         app.action_delete()
         callback = mock_push.call_args.args[1]
         callback(None)
 
-    mock_archive.assert_not_called()
+    assert server.events == []
 
 
 def test_action_delete_removes_backlog():
@@ -1564,25 +1553,20 @@ def test_action_delete_removes_backlog():
     with (
         patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=BacklogTable()),
         patch.object(app, "_get_selected_backlog_id", return_value="bl111111"),
-        patch("hopper.tui.remove_backlog_item", return_value=items[0]) as mock_remove,
-        patch.object(app, "refresh_backlog") as mock_refresh,
     ):
         app.action_delete()
-    mock_remove.assert_called_once_with(app._backlog, "bl111111")
-    mock_refresh.assert_called_once()
+    assert server.events == [{"type": "backlog_remove", "item_id": "bl111111"}]
 
 
 def test_action_delete_noop_when_neither_focused():
     """action_delete should noop when focus is not lode/backlog table."""
-    app = HopperApp()
+    server = MockServer()
+    app = HopperApp(server=server)
     with (
         patch.object(HopperApp, "focused", new_callable=PropertyMock, return_value=object()),
-        patch("hopper.tui.archive_lode") as mock_archive,
-        patch("hopper.tui.remove_backlog_item") as mock_remove,
     ):
         app.action_delete()
-    mock_archive.assert_not_called()
-    mock_remove.assert_not_called()
+    assert server.events == []
 
 
 def test_format_diff_stat():
@@ -1728,7 +1712,7 @@ async def test_enter_on_backlog_item_opens_edit(temp_config):
 
 @pytest.mark.asyncio
 async def test_backlog_edit_save_updates_item(temp_config):
-    """Saving from edit modal should update the backlog item description."""
+    """Saving from edit modal should enqueue backlog_update."""
     from textual.widgets import TextArea
 
     from hopper.backlog import BacklogItem
@@ -1752,12 +1736,14 @@ async def test_backlog_edit_save_updates_item(temp_config):
         await pilot.press("tab")  # Promote
         await pilot.press("tab")  # Save
         await pilot.press("enter")
-        assert app._backlog[0].description == "Updated"
+        assert server.events == [
+            {"type": "backlog_update", "item_id": "bl111111", "description": "Updated"}
+        ]
 
 
 @pytest.mark.asyncio
 async def test_backlog_promote_creates_session(monkeypatch, temp_config):
-    """Promote should create a session, remove backlog item, and spawn in background."""
+    """Promote should enqueue lode_promote_backlog."""
     from textual.widgets import TextArea
 
     from hopper.backlog import BacklogItem
@@ -1768,15 +1754,6 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
     ]
     server = MockServer([], backlog=items)
     app = HopperApp(server=server)
-
-    spawned = []
-    monkeypatch.setattr(
-        "hopper.tui.spawn_claude",
-        lambda sid, path, foreground=True: spawned.append(
-            {"sid": sid, "path": path, "fg": foreground}
-        ),
-    )
-    monkeypatch.setattr("hopper.tui.find_project", lambda name: None)
 
     async with app.run_test() as pilot:
         await pilot.press("tab")
@@ -1789,19 +1766,9 @@ async def test_backlog_promote_creates_session(monkeypatch, temp_config):
         await pilot.press("tab")  # Promote
         await pilot.press("enter")
 
-        # Backlog item should be removed
-        assert len(app._backlog) == 0
-        # Lode should be created
-        assert len(app._lodes) == 1
-        session = app._lodes[0]
-        assert session["project"] == "testproj"
-        assert session["scope"] == "Promote me"
-        assert session["backlog"] is not None
-        assert session["backlog"]["id"] == "bl111111"
-        assert session["backlog"]["description"] == "Promote me"
-        # Should have spawned in background
-        assert len(spawned) == 1
-        assert spawned[0]["fg"] is False
+        assert server.events == [
+            {"type": "lode_promote_backlog", "item_id": "bl111111", "scope": "Promote me"}
+        ]
 
 
 # Tests for MillReviewScreen
@@ -2257,7 +2224,7 @@ async def test_ship_review_ship_spawns_ship(monkeypatch, temp_config):
 
 @pytest.mark.asyncio
 async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_config):
-    """Refine from review should change stage back and spawn refine."""
+    """Refine from review should enqueue lode_resume_refine."""
     from hopper.lodes import get_lode_dir
     from hopper.tui import ShipReviewScreen
 
@@ -2291,15 +2258,7 @@ async def test_ship_review_refine_changes_stage_and_spawns(monkeypatch, temp_con
             await pilot.press("left")  # Ship -> Refine
             await pilot.press("enter")
 
-            # Lode stage should be changed back to refine
-            assert session["stage"] == "refine"
-            assert session["state"] == "running"
-            assert session["status"] == "Resuming refine"
-
-            # Should have spawned in background
-            assert len(spawned) == 1
-            assert spawned[0]["sid"] == session["id"]
-            assert spawned[0]["fg"] is False
+            assert server.events == [{"type": "lode_resume_refine", "lode_id": "aaaa1111"}]
 
 
 @pytest.mark.asyncio

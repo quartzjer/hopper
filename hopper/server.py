@@ -20,6 +20,7 @@ from hopper.backlog import (
     add_backlog_item,
     load_backlog,
     remove_backlog_item,
+    update_backlog_item,
 )
 from hopper.backlog import (
     find_by_prefix as find_backlog_by_prefix,
@@ -83,7 +84,9 @@ class Server:
         self.stop_event = threading.Event()
         self.server_socket: socket.socket | None = None
         self.broadcast_queue: queue.Queue = queue.Queue(maxsize=10000)
+        self.event_queue: queue.Queue = queue.Queue(maxsize=10000)
         self.writer_thread: threading.Thread | None = None
+        self.event_thread: threading.Thread | None = None
         self.lodes: list[dict] = []
         self.archived_lodes: list[dict] = []
         self.backlog: list[BacklogItem] = []
@@ -146,11 +149,17 @@ class Server:
         self.server_socket.listen(5)
         self.server_socket.settimeout(1.0)
 
-        # Start writer thread
+        # Start writer thread (serializes broadcasts)
         self.writer_thread = threading.Thread(
             target=self._writer_loop, name="server-writer", daemon=True
         )
         self.writer_thread.start()
+
+        # Start event loop thread (serializes all state mutations)
+        self.event_thread = threading.Thread(
+            target=self._event_loop, name="server-events", daemon=True
+        )
+        self.event_thread.start()
 
         logger.info(f"Server listening on {self.socket_path}")
 
@@ -169,8 +178,15 @@ class Server:
             if self.socket_path.exists():
                 self.socket_path.unlink()
 
+    # Message types that only read state and send a response (safe from any thread)
+    _READ_ONLY_TYPES = frozenset({"connect", "ping", "lode_list", "backlog_list"})
+
     def _handle_client(self, conn: socket.socket) -> None:
-        """Handle a client connection."""
+        """Handle a client connection.
+
+        Read-only messages are handled inline. Mutations are enqueued
+        to the event loop thread for serialized processing.
+        """
         with self.lock:
             self.clients.append(conn)
 
@@ -191,7 +207,11 @@ class Server:
                         if line.strip():
                             try:
                                 message = json.loads(line)
-                                self._handle_message(message, conn)
+                                msg_type = message.get("type")
+                                if msg_type in self._READ_ONLY_TYPES:
+                                    self._handle_read_only(message, conn)
+                                else:
+                                    self._enqueue_event(message, conn)
                             except json.JSONDecodeError:
                                 pass
                 except socket.timeout:
@@ -199,7 +219,7 @@ class Server:
         except Exception as e:
             logger.debug(f"Client error: {e}")
         finally:
-            self._on_client_disconnect(conn)
+            self._enqueue_event({"type": "_client_disconnect"}, conn)
             with self.lock:
                 if conn in self.clients:
                     self.clients.remove(conn)
@@ -210,17 +230,23 @@ class Server:
             logger.debug(f"Client disconnected ({len(self.clients)} remaining)")
 
     def _on_client_disconnect(self, conn: socket.socket) -> None:
-        """Handle client disconnect - deactivate lode, auto-advance, or auto-archive."""
-        with self.lock:
-            lode_id = self.client_lodes.pop(conn, None)
-            if lode_id:
-                self.lode_clients.pop(lode_id, None)
+        """Handle client disconnect - deactivate lode, auto-advance, or auto-archive.
+
+        Runs on the event loop thread — no lock needed for state mutations.
+        """
+        lode_id = self.client_lodes.pop(conn, None)
+        if lode_id:
+            self.lode_clients.pop(lode_id, None)
 
         if not lode_id:
             return
 
         lode = self._find_lode(lode_id)
         if not lode:
+            return
+
+        # Skip if another runner already claimed this lode
+        if lode_id in self.lode_clients:
             return
 
         lode["active"] = False
@@ -265,24 +291,24 @@ class Server:
         """Register a client as owning a lode.
 
         Sets active=True on the lode and disconnects any stale owner.
+        Runs on the event loop thread — no lock needed for state mutations.
         """
-        with self.lock:
-            # Check for existing owner
-            existing_conn = self.lode_clients.get(lode_id)
-            if existing_conn and existing_conn != conn:
-                # Disconnect stale client
-                old_lode_id = self.client_lodes.pop(existing_conn, None)
-                if old_lode_id:
-                    self.lode_clients.pop(old_lode_id, None)
-                try:
-                    existing_conn.close()
-                except Exception:
-                    pass
-                logger.debug(f"Disconnected stale client for lode {lode_id}")
+        # Check for existing owner
+        existing_conn = self.lode_clients.get(lode_id)
+        if existing_conn and existing_conn != conn:
+            # Disconnect stale client
+            old_lode_id = self.client_lodes.pop(existing_conn, None)
+            if old_lode_id:
+                self.lode_clients.pop(old_lode_id, None)
+            try:
+                existing_conn.close()
+            except Exception:
+                pass
+            logger.debug(f"Disconnected stale client for lode {lode_id}")
 
-            # Register new owner
-            self.lode_clients[lode_id] = conn
-            self.client_lodes[conn] = lode_id
+        # Register new owner
+        self.lode_clients[lode_id] = conn
+        self.client_lodes[conn] = lode_id
 
         # Set active on the lode
         lode = self._find_lode(lode_id)
@@ -298,12 +324,11 @@ class Server:
 
         logger.info(f"Registered client for lode {lode_id}, active=True")
 
-    def _handle_message(self, message: dict, conn: socket.socket) -> None:
-        """Handle an incoming message, responding directly if needed."""
+    def _handle_read_only(self, message: dict, conn: socket.socket) -> None:
+        """Handle read-only messages inline (from any client thread)."""
         msg_type = message.get("type")
 
         if msg_type == "connect":
-            # Read-only handshake: returns lode data without claiming ownership
             lode_id = message.get("lode_id")
             response: dict = {
                 "type": "connected",
@@ -313,11 +338,26 @@ class Server:
                 lode = self._find_lode(lode_id)
                 response["lode"] = lode if lode else None
                 response["lode_found"] = lode is not None
-
             self._send_response(conn, response)
 
+        elif msg_type == "ping":
+            self._send_response(conn, {"type": "pong"})
+
+        elif msg_type == "lode_list":
+            self._send_response(conn, {"type": "lode_list", "lodes": self.lodes})
+
+        elif msg_type == "backlog_list":
+            items_data = [item.to_dict() for item in self.backlog]
+            self._send_response(conn, {"type": "backlog_list", "items": items_data})
+
+    def _handle_mutation(self, message: dict, conn: socket.socket | None) -> None:
+        """Handle a state-mutating message. Runs on the event loop thread."""
+        msg_type = message.get("type")
+
+        if msg_type == "_client_disconnect":
+            self._on_client_disconnect(conn)
+
         elif msg_type == "lode_register":
-            # Persistent connection claims ownership of a lode (sets active=True)
             lode_id = message.get("lode_id")
             if lode_id:
                 lode = self._find_lode(lode_id)
@@ -326,17 +366,21 @@ class Server:
                     pid = message.get("pid")
                     self._register_lode_client(lode_id, conn, tmux_pane, pid)
 
-        elif msg_type == "ping":
-            self._send_response(conn, {"type": "pong"})
-
-        elif msg_type == "lode_list":
-            self._send_response(conn, {"type": "lode_list", "lodes": self.lodes})
-
         elif msg_type == "lode_create":
             project = message.get("project", "")
-            lode = create_lode(self.lodes, project)
+            scope = message.get("scope", "")
+            lode = create_lode(self.lodes, project, scope)
+            backlog_data = message.get("backlog")
+            if backlog_data:
+                lode["backlog"] = backlog_data
+                save_lodes(self.lodes)
             logger.info(f"Lode {lode['id']} created project={project}")
             self.broadcast({"type": "lode_created", "lode": lode})
+            # Auto-spawn if requested
+            if message.get("spawn"):
+                proj = find_project(project)
+                project_path = proj.path if proj else None
+                spawn_claude(lode["id"], project_path, foreground=False)
 
         elif msg_type == "lode_set_stage":
             lode_id = message.get("lode_id")
@@ -419,10 +463,45 @@ class Server:
                 if lode:
                     logger.info(f"Lode {lode_id} claude_reset stage={claude_stage}")
                     self.broadcast({"type": "lode_updated", "lode": lode})
+                    # Auto-spawn if requested (reload flow)
+                    if message.get("spawn"):
+                        proj = find_project(
+                            self._find_lode(lode_id).get("project", "")
+                            if self._find_lode(lode_id)
+                            else ""
+                        )
+                        project_path = proj.path if proj else None
+                        spawn_claude(lode_id, project_path)
 
-        elif msg_type == "backlog_list":
-            items_data = [item.to_dict() for item in self.backlog]
-            self._send_response(conn, {"type": "backlog_list", "items": items_data})
+        elif msg_type == "lode_resume_refine":
+            # Compound: change stage back to refine, set running state, spawn
+            lode_id = message.get("lode_id")
+            if lode_id:
+                update_lode_stage(self.lodes, lode_id, "refine")
+                lode = update_lode_state(self.lodes, lode_id, "running", "Resuming refine")
+                if lode:
+                    logger.info(f"Lode {lode_id} resumed refine")
+                    self.broadcast({"type": "lode_updated", "lode": lode})
+                    proj = find_project(lode.get("project", ""))
+                    project_path = proj.path if proj else None
+                    spawn_claude(lode_id, project_path, foreground=False)
+
+        elif msg_type == "lode_promote_backlog":
+            # Compound: create lode from backlog item, remove backlog item
+            item_id = message.get("item_id", "")
+            scope = message.get("scope", "")
+            item = find_backlog_by_prefix(self.backlog, item_id)
+            if item:
+                lode = create_lode(self.lodes, item.project, scope)
+                lode["backlog"] = item.to_dict()
+                save_lodes(self.lodes)
+                logger.info(f"Lode {lode['id']} promoted from backlog {item.id}")
+                self.broadcast({"type": "lode_created", "lode": lode})
+                remove_backlog_item(self.backlog, item.id)
+                self.broadcast({"type": "backlog_removed", "item": item.to_dict()})
+                proj = find_project(item.project)
+                project_path = proj.path if proj else None
+                spawn_claude(lode["id"], project_path, foreground=False)
 
         elif msg_type == "backlog_add":
             project = message.get("project", "")
@@ -432,6 +511,13 @@ class Server:
                 item = add_backlog_item(self.backlog, project, description, lode_id)
                 logger.info(f"Backlog {item.id} added project={project}")
                 self.broadcast({"type": "backlog_added", "item": item.to_dict()})
+
+        elif msg_type == "backlog_update":
+            item_id = message.get("item_id", "")
+            description = message.get("description", "")
+            if item_id and description:
+                update_backlog_item(self.backlog, item_id, description)
+                logger.info(f"Backlog {item_id} updated")
 
         elif msg_type == "backlog_remove":
             item_id = message.get("item_id", "")
@@ -460,6 +546,34 @@ class Server:
             conn.sendall(response.encode("utf-8"))
         except Exception as e:
             logger.debug(f"Failed to send response: {e}")
+
+    def _event_loop(self) -> None:
+        """Dedicated thread that serializes all state mutations.
+
+        Dequeues (message, conn) pairs and processes them one at a time,
+        ensuring no concurrent access to lode/backlog state or save_lodes.
+        """
+        while not self.stop_event.is_set():
+            try:
+                message, conn = self.event_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            try:
+                self._handle_mutation(message, conn)
+            except Exception:
+                logger.exception(f"Event loop error: {message.get('type')}")
+
+    def _enqueue_event(self, message: dict, conn: socket.socket | None = None) -> None:
+        """Enqueue a mutation event for the event loop thread."""
+        try:
+            self.event_queue.put_nowait((message, conn))
+        except queue.Full:
+            logger.warning(f"Event queue full, dropping: {message.get('type')}")
+
+    def enqueue(self, message: dict) -> None:
+        """Public API for in-process callers (TUI) to submit mutations."""
+        self._enqueue_event(message)
 
     def _writer_loop(self) -> None:
         """Dedicated writer thread that serializes all broadcasts."""
@@ -542,7 +656,9 @@ class Server:
             except Exception:
                 pass
 
-        # Wait for writer thread
+        # Wait for threads
+        if self.event_thread and self.event_thread.is_alive():
+            self.event_thread.join(timeout=1.0)
         if self.writer_thread and self.writer_thread.is_alive():
             self.writer_thread.join(timeout=1.0)
 

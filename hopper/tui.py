@@ -30,20 +30,13 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
-from hopper.backlog import BacklogItem, add_backlog_item, remove_backlog_item, update_backlog_item
+from hopper.backlog import BacklogItem
 from hopper.claude import spawn_claude, switch_to_pane
 from hopper.git import get_diff_stat
 from hopper.lodes import (
-    archive_lode,
-    create_lode,
     format_age,
     format_uptime,
     get_lode_dir,
-    reset_lode_claude_stage,
-    save_lodes,
-    update_lode_auto,
-    update_lode_stage,
-    update_lode_state,
 )
 from hopper.projects import Project, find_project, touch_project
 
@@ -1310,12 +1303,24 @@ class HopperApp(App):
                     return  # Cancelled
                 scope, action = result
                 if action == "backlog":
-                    add_backlog_item(self._backlog, project.name, scope)
-                    self.refresh_backlog()
+                    if self.server:
+                        self.server.enqueue(
+                            {
+                                "type": "backlog_add",
+                                "project": project.name,
+                                "description": scope,
+                            }
+                        )
                 else:
-                    lode = create_lode(self._lodes, project.name, scope)
-                    spawn_claude(lode["id"], project.path, foreground=False)
-                    self.refresh_table()
+                    if self.server:
+                        self.server.enqueue(
+                            {
+                                "type": "lode_create",
+                                "project": project.name,
+                                "scope": scope,
+                                "spawn": True,
+                            }
+                        )
 
             self.push_screen(ScopeInputScreen(project.name), on_scope_entered)
 
@@ -1335,8 +1340,14 @@ class HopperApp(App):
             def on_description_entered(description: str | None) -> None:
                 if description is None:
                     return  # Cancelled
-                add_backlog_item(self._backlog, project.name, description)
-                self.refresh_backlog()
+                if self.server:
+                    self.server.enqueue(
+                        {
+                            "type": "backlog_add",
+                            "project": project.name,
+                            "description": description,
+                        }
+                    )
 
             self.push_screen(BacklogInputScreen(), on_description_entered)
 
@@ -1409,11 +1420,8 @@ class HopperApp(App):
                 if diff_stat:
                     # Has unmerged changes - show confirmation modal
                     def on_confirm(result: bool | None) -> None:
-                        if result:
-                            archived = archive_lode(self._lodes, lode_id)
-                            if archived is not None:
-                                self._archived_lodes.append(archived)
-                            self.refresh_table()
+                        if result and self.server:
+                            self.server.enqueue({"type": "lode_archive", "lode_id": lode_id})
 
                     self.push_screen(
                         ArchiveConfirmScreen(diff_stat=diff_stat, lode_id=lode_id),
@@ -1421,17 +1429,14 @@ class HopperApp(App):
                     )
                     return
             # No worktree or no changes - archive immediately
-            archived = archive_lode(self._lodes, lode_id)
-            if archived is not None:
-                self._archived_lodes.append(archived)
-            self.refresh_table()
+            if self.server:
+                self.server.enqueue({"type": "lode_archive", "lode_id": lode_id})
         elif isinstance(self.focused, BacklogTable):
             item_id = self._get_selected_backlog_id()
             if not item_id:
                 return
-            removed = remove_backlog_item(self._backlog, item_id)
-            if removed:
-                self.refresh_backlog()
+            if self.server:
+                self.server.enqueue({"type": "backlog_remove", "item_id": item_id})
 
     def action_toggle_auto(self) -> None:
         """Toggle auto-advance on the selected lode."""
@@ -1449,11 +1454,8 @@ class HopperApp(App):
             return
 
         new_auto = not lode.get("auto", False)
-        updated = update_lode_auto(self._lodes, lode["id"], new_auto)
-        if updated and self.server:
-            self.server.broadcast({"type": "lode_updated", "lode": updated})
-
-        self.refresh_table()
+        if self.server:
+            self.server.enqueue({"type": "lode_set_auto", "lode_id": lode["id"], "auto": new_auto})
 
     def action_reload(self) -> None:
         """Reload the current stage with a fresh Claude session."""
@@ -1478,17 +1480,16 @@ class HopperApp(App):
         if stage not in ("mill", "refine", "ship"):
             return
 
-        updated = reset_lode_claude_stage(self._lodes, lode["id"], stage)
-        if updated and self.server:
-            self.server.broadcast({"type": "lode_updated", "lode": updated})
-
+        if self.server:
+            self.server.enqueue(
+                {
+                    "type": "lode_reset_claude_stage",
+                    "lode_id": lode["id"],
+                    "claude_stage": stage,
+                    "spawn": True,
+                }
+            )
         self.notify(f"Reloading {stage}...")
-        self.refresh_table()
-
-        # Spawn Claude with fresh session
-        project = find_project(lode.get("project", ""))
-        if project:
-            spawn_claude(lode["id"], project.path)
 
     def action_legend(self) -> None:
         """Show the symbol legend modal."""
@@ -1517,18 +1518,23 @@ class HopperApp(App):
                 return  # Cancelled
             action, text = result
             if action == "save":
-                update_backlog_item(self._backlog, item_id, text)
-                self.refresh_backlog()
+                if self.server:
+                    self.server.enqueue(
+                        {
+                            "type": "backlog_update",
+                            "item_id": item_id,
+                            "description": text,
+                        }
+                    )
             elif action == "promote":
-                project = find_project(item.project)
-                project_path = project.path if project else None
-                lode = create_lode(self._lodes, item.project, text)
-                lode["backlog"] = item.to_dict()
-                save_lodes(self._lodes)
-                spawn_claude(lode["id"], project_path, foreground=False)
-                remove_backlog_item(self._backlog, item_id)
-                self.refresh_table()
-                self.refresh_backlog()
+                if self.server:
+                    self.server.enqueue(
+                        {
+                            "type": "lode_promote_backlog",
+                            "item_id": item_id,
+                            "scope": text,
+                        }
+                    )
 
         self.push_screen(BacklogEditScreen(initial_text=item.description), on_edit_result)
 
@@ -1570,11 +1576,8 @@ class HopperApp(App):
             if result == "ship":
                 spawn_claude(lode["id"], project_path, foreground=False)
             elif result == "refine":
-                # Change stage back to refine and resume
-                update_lode_stage(self._lodes, lode["id"], "refine")
-                update_lode_state(self._lodes, lode["id"], "running", "Resuming refine")
-                spawn_claude(lode["id"], project_path, foreground=False)
-            self.refresh_table()
+                if self.server:
+                    self.server.enqueue({"type": "lode_resume_refine", "lode_id": lode["id"]})
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)
 
