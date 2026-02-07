@@ -129,6 +129,14 @@ class Server:
         if stale:
             save_lodes(self.lodes)
 
+        # Auto-archive any shipped lodes left over from before auto-archive existed
+        shipped = [lode for lode in self.lodes if lode.get("stage") == "shipped"]
+        for lode in shipped:
+            archived = archive_lode(self.lodes, lode["id"])
+            if archived:
+                self.archived_lodes.append(archived)
+                logger.info(f"Startup: auto-archived shipped lode {lode['id']}")
+
         # Remove stale socket file
         if self.socket_path.exists():
             self.socket_path.unlink()
@@ -202,7 +210,7 @@ class Server:
             logger.debug(f"Client disconnected ({len(self.clients)} remaining)")
 
     def _on_client_disconnect(self, conn: socket.socket) -> None:
-        """Handle client disconnect - set active=False and clear tmux_pane and pid."""
+        """Handle client disconnect - deactivate lode, auto-advance, or auto-archive."""
         with self.lock:
             lode_id = self.client_lodes.pop(conn, None)
             if lode_id:
@@ -238,6 +246,14 @@ class Server:
                 spawn_claude(lode_id, project_path, foreground=False)
             else:
                 logger.warning(f"Auto-advance skipped for {lode_id}: project not found")
+
+        # Auto-archive shipped lodes
+        if stage == "shipped":
+            archived = archive_lode(self.lodes, lode_id)
+            if archived:
+                self.archived_lodes.append(archived)
+                logger.info(f"Lode {lode_id} auto-archived")
+                self.broadcast({"type": "lode_archived", "lode": archived})
 
     def _register_lode_client(
         self,

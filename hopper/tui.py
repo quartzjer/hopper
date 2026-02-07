@@ -1387,8 +1387,6 @@ class HopperApp(App):
         elif lode.get("stage") == "ship" and lode.get("state") == "ready":
             # Refine complete, ready to ship - review changes before shipping
             self._review_ship(lode, project_path)
-        elif lode.get("stage") == "shipped":
-            self._review_shipped(lode)
         else:
             # Lode is not active - spawn runner based on stage
             if not spawn_claude(lode["id"], project_path):
@@ -1579,24 +1577,6 @@ class HopperApp(App):
             self.refresh_table()
 
         self.push_screen(ShipReviewScreen(diff_stat=diff_stat), on_review_result)
-
-    def _review_shipped(self, lode: dict) -> None:
-        """Open the shipped review modal for a shipped lode."""
-        lode_id = lode["id"]
-        output_path = get_lode_dir(lode_id) / "ship_out.md"
-        try:
-            content = output_path.read_text()
-        except FileNotFoundError:
-            content = "No output available."
-
-        title = lode.get("title", "")
-
-        def on_result(result: bool | None) -> None:
-            if result:
-                archive_lode(self._lodes, lode_id)
-            self.refresh_table()
-
-        self.push_screen(ShippedReviewScreen(content, title), on_result)
 
 
 def run_tui(server=None) -> int:

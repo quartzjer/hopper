@@ -2335,19 +2335,6 @@ async def test_shipped_review_archive_button():
         assert app.review_result is True
 
 
-@pytest.mark.asyncio
-async def test_enter_on_shipped_calls_review_shipped():
-    """Enter on a shipped lode should call _review_shipped."""
-    session = {"id": "aaaa1111", "stage": "shipped", "state": "ready", "created_at": 1000}
-    server = MockServer([session])
-    app = HopperApp(server=server)
-
-    with patch.object(app, "_review_shipped") as mock_review:
-        async with app.run_test() as pilot:
-            await pilot.press("enter")
-            mock_review.assert_called_once_with(session)
-
-
 def test_action_view_files_noop_when_backlog_focused():
     """action_view_files is a no-op when BacklogTable is focused."""
     from hopper.tui import BacklogTable

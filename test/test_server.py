@@ -118,6 +118,39 @@ def test_server_clears_stale_pid_on_startup(socket_path, temp_config, make_lode)
         thread.join(timeout=2)
 
 
+def test_startup_archives_shipped_lodes(socket_path, temp_config, make_lode):
+    """Server startup migrates shipped lodes from active to archived."""
+    shipped_lode = make_lode(id="test-id", stage="shipped")
+    save_lodes([shipped_lode])
+
+    srv = Server(socket_path)
+    thread = threading.Thread(target=srv.start, daemon=True)
+    thread.start()
+
+    try:
+        for _ in range(50):
+            if socket_path.exists():
+                break
+            time.sleep(0.1)
+        else:
+            raise TimeoutError("Server did not start")
+
+        assert srv.lodes == []
+        assert len(srv.archived_lodes) == 1
+        assert srv.archived_lodes[0]["id"] == "test-id"
+
+        archived_file = temp_config / "archived.jsonl"
+        assert archived_file.exists()
+        archived_entries = [
+            json.loads(line) for line in archived_file.read_text().splitlines() if line.strip()
+        ]
+        assert len(archived_entries) == 1
+        assert archived_entries[0]["id"] == "test-id"
+    finally:
+        srv.stop()
+        thread.join(timeout=2)
+
+
 def test_server_broadcast_requires_type():
     """Broadcast rejects messages without type field."""
     srv = Server(socket_path="/tmp/unused.sock")
@@ -608,6 +641,82 @@ def test_auto_spawn_on_disconnect(socket_path, server, temp_config, make_lode):
                 break
 
         mock_spawn.assert_called_once_with("test-id", "/some/path", foreground=False)
+
+
+def test_auto_archive_shipped_on_disconnect(socket_path, server, temp_config, make_lode):
+    """Shipped lodes are auto-archived when their client disconnects."""
+    lode = make_lode(
+        id="test-id",
+        stage="shipped",
+        state="ready",
+        status="Ship complete",
+    )
+    server.lodes = [lode]
+    save_lodes(server.lodes)
+
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+    msg = {"type": "lode_register", "lode_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    for _ in range(50):
+        if "test-id" in server.lode_clients:
+            break
+        time.sleep(0.1)
+
+    client.close()
+
+    for _ in range(20):
+        time.sleep(0.1)
+        if not server.lodes:
+            break
+
+    assert server.lodes == []
+    assert len(server.archived_lodes) == 1
+    assert server.archived_lodes[0]["id"] == "test-id"
+
+    archived_file = temp_config / "archived.jsonl"
+    assert archived_file.exists()
+    archived_entries = [
+        json.loads(line) for line in archived_file.read_text().splitlines() if line.strip()
+    ]
+    assert len(archived_entries) == 1
+    assert archived_entries[0]["id"] == "test-id"
+
+
+def test_no_auto_archive_non_shipped_on_disconnect(socket_path, server, temp_config, make_lode):
+    """Non-shipped lodes are not auto-archived on disconnect."""
+    lode = make_lode(
+        id="test-id",
+        stage="ship",
+        state="ready",
+        status="Ship complete",
+    )
+    server.lodes = [lode]
+    save_lodes(server.lodes)
+
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(str(socket_path))
+    client.settimeout(2.0)
+    msg = {"type": "lode_register", "lode_id": "test-id"}
+    client.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+    for _ in range(50):
+        if "test-id" in server.lode_clients:
+            break
+        time.sleep(0.1)
+
+    client.close()
+
+    for _ in range(20):
+        time.sleep(0.1)
+        if not server.lodes[0]["active"]:
+            break
+
+    assert len(server.lodes) == 1
+    assert server.lodes[0]["id"] == "test-id"
+    assert server.archived_lodes == []
 
 
 def test_auto_spawn_skipped_when_stage_done(socket_path, server, temp_config, make_lode):
